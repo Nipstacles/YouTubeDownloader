@@ -9,11 +9,11 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>YouTubeDownloader</AssemblyName>
     <Version>1.0.0</Version>
-    <Authors>Your Name</Authors>
-    <Company>Your Company</Company>
-    <Product>YouTube Downloader</Product>
+    <Authors>Nipstacles</Authors>
+    <Company>Bandorf</Company>
+    <Product>YouTube Video Downloader</Product>
     <Description>Download YouTube videos with quality selection and age-restriction support</Description>
-    <Copyright>Copyright © 2025</Copyright>
+    <Copyright>Copyright © 2026</Copyright>
     <PublishSingleFile>false</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -22,6 +22,12 @@
 
   <ItemGroup>
     <None Update="yt-dlp.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ffmpeg.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="yt-dl_logo.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="yt-dl_logo.png">

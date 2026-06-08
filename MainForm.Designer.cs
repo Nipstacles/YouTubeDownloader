@@ -47,13 +47,18 @@ namespace yt_dl
             lblStatus = new Label();
             progressBar = new ProgressBar();
             btnDownload = new Button();
+            btnListFormats = new Button();
+            menuStrip = new MenuStrip();
+            toolsToolStripMenuItem = new ToolStripMenuItem();
+            updateYtDlpToolStripMenuItem = new ToolStripMenuItem();
             ((System.ComponentModel.ISupportInitialize)picLogo).BeginInit();
             ((System.ComponentModel.ISupportInitialize)picThumbnail).BeginInit();
+            menuStrip.SuspendLayout();
             SuspendLayout();
             // 
             // picLogo
             // 
-            picLogo.Location = new Point(12, 12);
+            picLogo.Location = new Point(12, 36);
             picLogo.Name = "picLogo";
             picLogo.Size = new Size(40, 40);
             picLogo.SizeMode = PictureBoxSizeMode.Zoom;
@@ -63,7 +68,7 @@ namespace yt_dl
             // lblUrl
             // 
             lblUrl.AutoSize = true;
-            lblUrl.Location = new Point(12, 65);
+            lblUrl.Location = new Point(12, 89);
             lblUrl.Name = "lblUrl";
             lblUrl.Size = new Size(85, 15);
             lblUrl.TabIndex = 1;
@@ -71,7 +76,7 @@ namespace yt_dl
             // 
             // txtUrl
             // 
-            txtUrl.Location = new Point(112, 62);
+            txtUrl.Location = new Point(112, 86);
             txtUrl.Name = "txtUrl";
             txtUrl.PlaceholderText = "https://www.youtube.com/watch?v=...";
             txtUrl.Size = new Size(460, 23);
@@ -81,7 +86,7 @@ namespace yt_dl
             // lblQuality
             // 
             lblQuality.AutoSize = true;
-            lblQuality.Location = new Point(12, 100);
+            lblQuality.Location = new Point(12, 124);
             lblQuality.Name = "lblQuality";
             lblQuality.Size = new Size(51, 15);
             lblQuality.TabIndex = 3;
@@ -91,7 +96,7 @@ namespace yt_dl
             // 
             cmbQuality.DropDownStyle = ComboBoxStyle.DropDownList;
             cmbQuality.FormattingEnabled = true;
-            cmbQuality.Location = new Point(112, 97);
+            cmbQuality.Location = new Point(112, 121);
             cmbQuality.Name = "cmbQuality";
             cmbQuality.Size = new Size(200, 23);
             cmbQuality.TabIndex = 4;
@@ -99,7 +104,7 @@ namespace yt_dl
             // lblOutput
             // 
             lblOutput.AutoSize = true;
-            lblOutput.Location = new Point(12, 135);
+            lblOutput.Location = new Point(12, 159);
             lblOutput.Name = "lblOutput";
             lblOutput.Size = new Size(86, 15);
             lblOutput.TabIndex = 5;
@@ -107,7 +112,7 @@ namespace yt_dl
             // 
             // txtOutput
             // 
-            txtOutput.Location = new Point(112, 132);
+            txtOutput.Location = new Point(112, 156);
             txtOutput.Name = "txtOutput";
             txtOutput.PlaceholderText = "C:\\Users\\Username\\Downloads";
             txtOutput.Size = new Size(385, 23);
@@ -115,7 +120,7 @@ namespace yt_dl
             // 
             // btnBrowse
             // 
-            btnBrowse.Location = new Point(503, 132);
+            btnBrowse.Location = new Point(503, 156);
             btnBrowse.Name = "btnBrowse";
             btnBrowse.Size = new Size(69, 23);
             btnBrowse.TabIndex = 7;
@@ -126,7 +131,7 @@ namespace yt_dl
             // lblFilename
             // 
             lblFilename.AutoSize = true;
-            lblFilename.Location = new Point(12, 170);
+            lblFilename.Location = new Point(12, 194);
             lblFilename.Name = "lblFilename";
             lblFilename.Size = new Size(88, 15);
             lblFilename.TabIndex = 8;
@@ -134,7 +139,7 @@ namespace yt_dl
             // 
             // txtFilename
             // 
-            txtFilename.Location = new Point(112, 167);
+            txtFilename.Location = new Point(112, 191);
             txtFilename.Name = "txtFilename";
             txtFilename.PlaceholderText = "Leave empty to use video title";
             txtFilename.Size = new Size(385, 23);
@@ -142,7 +147,7 @@ namespace yt_dl
             // 
             // btnCheckStatus
             // 
-            btnCheckStatus.Location = new Point(503, 167);
+            btnCheckStatus.Location = new Point(503, 191);
             btnCheckStatus.Name = "btnCheckStatus";
             btnCheckStatus.Size = new Size(69, 23);
             btnCheckStatus.TabIndex = 10;
@@ -153,7 +158,7 @@ namespace yt_dl
             // chkBypassRestrictions
             // 
             chkBypassRestrictions.AutoSize = true;
-            chkBypassRestrictions.Location = new Point(12, 202);
+            chkBypassRestrictions.Location = new Point(12, 226);
             chkBypassRestrictions.Name = "chkBypassRestrictions";
             chkBypassRestrictions.Size = new Size(272, 19);
             chkBypassRestrictions.TabIndex = 11;
@@ -163,7 +168,7 @@ namespace yt_dl
             // linkLabelHelp
             // 
             linkLabelHelp.AutoSize = true;
-            linkLabelHelp.Location = new Point(290, 203);
+            linkLabelHelp.Location = new Point(290, 227);
             linkLabelHelp.Name = "linkLabelHelp";
             linkLabelHelp.Size = new Size(32, 15);
             linkLabelHelp.TabIndex = 12;
@@ -174,7 +179,7 @@ namespace yt_dl
             // picThumbnail
             // 
             picThumbnail.BorderStyle = BorderStyle.FixedSingle;
-            picThumbnail.Location = new Point(12, 227);
+            picThumbnail.Location = new Point(12, 251);
             picThumbnail.Name = "picThumbnail";
             picThumbnail.Size = new Size(160, 90);
             picThumbnail.SizeMode = PictureBoxSizeMode.Zoom;
@@ -184,7 +189,7 @@ namespace yt_dl
             // lblNodeStatus
             // 
             lblNodeStatus.AutoSize = true;
-            lblNodeStatus.Location = new Point(184, 232);
+            lblNodeStatus.Location = new Point(184, 256);
             lblNodeStatus.Name = "lblNodeStatus";
             lblNodeStatus.Size = new Size(117, 15);
             lblNodeStatus.TabIndex = 14;
@@ -193,7 +198,7 @@ namespace yt_dl
             // lblCookieStatus
             // 
             lblCookieStatus.AutoSize = true;
-            lblCookieStatus.Location = new Point(184, 257);
+            lblCookieStatus.Location = new Point(184, 281);
             lblCookieStatus.Name = "lblCookieStatus";
             lblCookieStatus.Size = new Size(119, 15);
             lblCookieStatus.TabIndex = 15;
@@ -202,7 +207,7 @@ namespace yt_dl
             // lblStatus
             // 
             lblStatus.AutoSize = true;
-            lblStatus.Location = new Point(12, 329);
+            lblStatus.Location = new Point(12, 353);
             lblStatus.Name = "lblStatus";
             lblStatus.Size = new Size(39, 15);
             lblStatus.TabIndex = 16;
@@ -210,7 +215,7 @@ namespace yt_dl
             // 
             // progressBar
             // 
-            progressBar.Location = new Point(12, 347);
+            progressBar.Location = new Point(12, 371);
             progressBar.Name = "progressBar";
             progressBar.Size = new Size(477, 23);
             progressBar.TabIndex = 17;
@@ -218,7 +223,7 @@ namespace yt_dl
             // btnDownload
             // 
             btnDownload.Font = new Font("Segoe UI", 9F, FontStyle.Bold);
-            btnDownload.Location = new Point(495, 329);
+            btnDownload.Location = new Point(495, 353);
             btnDownload.Name = "btnDownload";
             btnDownload.Size = new Size(77, 41);
             btnDownload.TabIndex = 18;
@@ -226,11 +231,46 @@ namespace yt_dl
             btnDownload.UseVisualStyleBackColor = true;
             btnDownload.Click += btnDownload_Click;
             // 
+            // btnListFormats
+            // 
+            btnListFormats.Location = new Point(318, 121);
+            btnListFormats.Name = "btnListFormats";
+            btnListFormats.Size = new Size(95, 23);
+            btnListFormats.TabIndex = 19;
+            btnListFormats.Text = "List Formats";
+            btnListFormats.UseVisualStyleBackColor = true;
+            btnListFormats.Click += btnListFormats_Click;
+            // 
+            // menuStrip
+            // 
+            menuStrip.Items.AddRange(new ToolStripItem[] { toolsToolStripMenuItem });
+            menuStrip.Location = new Point(0, 0);
+            menuStrip.Name = "menuStrip";
+            menuStrip.Size = new Size(584, 24);
+            menuStrip.TabIndex = 20;
+            menuStrip.Text = "menuStrip";
+            // 
+            // toolsToolStripMenuItem
+            // 
+            toolsToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { updateYtDlpToolStripMenuItem });
+            toolsToolStripMenuItem.Name = "toolsToolStripMenuItem";
+            toolsToolStripMenuItem.Size = new Size(46, 20);
+            toolsToolStripMenuItem.Text = "Tools";
+            // 
+            // updateYtDlpToolStripMenuItem
+            // 
+            updateYtDlpToolStripMenuItem.Name = "updateYtDlpToolStripMenuItem";
+            updateYtDlpToolStripMenuItem.Size = new Size(180, 22);
+            updateYtDlpToolStripMenuItem.Text = "Update yt-dlp";
+            updateYtDlpToolStripMenuItem.Click += updateYtDlpToolStripMenuItem_Click;
+            // 
             // MainForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(584, 382);
+            ClientSize = new Size(584, 406);
+            Controls.Add(menuStrip);
+            Controls.Add(btnListFormats);
             Controls.Add(btnDownload);
             Controls.Add(progressBar);
             Controls.Add(lblStatus);
@@ -251,6 +291,7 @@ namespace yt_dl
             Controls.Add(lblUrl);
             Controls.Add(picLogo);
             FormBorderStyle = FormBorderStyle.FixedSingle;
+            MainMenuStrip = menuStrip;
             MaximizeBox = false;
             Name = "MainForm";
             StartPosition = FormStartPosition.CenterScreen;
@@ -258,6 +299,8 @@ namespace yt_dl
             Load += MainForm_Load;
             ((System.ComponentModel.ISupportInitialize)picLogo).EndInit();
             ((System.ComponentModel.ISupportInitialize)picThumbnail).EndInit();
+            menuStrip.ResumeLayout(false);
+            menuStrip.PerformLayout();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -283,5 +326,9 @@ namespace yt_dl
         private Label lblStatus;
         private ProgressBar progressBar;
         private Button btnDownload;
+        private Button btnListFormats;
+        private MenuStrip menuStrip;
+        private ToolStripMenuItem toolsToolStripMenuItem;
+        private ToolStripMenuItem updateYtDlpToolStripMenuItem;
     }
 }
