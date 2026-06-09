@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Net.Http.Headers;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -19,16 +21,21 @@ namespace yt_dl
         private CheckBox chkDownloadPlaylist = null!;
         private Button btnCancel = null!;
         private Button btnOpenOutputFolder = null!;
+        private Button btnCheckForUpdates = null!;
         private Button btnImportCookies = null!;
         private ToolStripMenuItem importCookiesToolStripMenuItem = null!;
         private ToolStripMenuItem locateFfmpegToolStripMenuItem = null!;
         private ToolStripMenuItem openAppFolderToolStripMenuItem = null!;
         private ToolStripMenuItem portableModeToolStripMenuItem = null!;
         private ToolStripMenuItem darkThemeToolStripMenuItem = null!;
+        private ToolStripMenuItem checkForUpdatesToolStripMenuItem = null!;
+        private CheckBox chkCheckForUpdatesOnStartup = null!;
         private bool _portableMode;
         private bool _darkTheme;
+        private bool _checkForUpdatesOnStartup = true;
         private string _settingsPath = "";
         private static readonly Regex DownloadProgressRegex = new(@"\[download\]\s+(?<percent>\d+(?:\.\d+)?)%(?:\s+of\s+(?<size>\S+))?(?:\s+at\s+(?<speed>\S+))?(?:\s+ETA\s+(?<eta>\S+))?", RegexOptions.Compiled);
+        private const string GitHubLatestReleaseUrl = "https://api.github.com/repos/Nipstacles/YouTubeDownloader/releases/latest";
 
         public MainForm()
         {
@@ -43,13 +50,29 @@ namespace yt_dl
         {
             CheckSystemStatus();
             LoadLogo();
+
+            if (_checkForUpdatesOnStartup)
+            {
+                BeginInvoke(new Action(async () => await CheckForApplicationUpdates(showUpToDateMessage: false)));
+            }
         }
 
         private void LoadLogo()
         {
             try
             {
-                string logoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dl_logo.png");
+                string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dl_logo.ico");
+                if (File.Exists(iconPath))
+                {
+                    Icon = new Icon(iconPath);
+                }
+
+                string logoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dl_logofull.png");
+                if (!File.Exists(logoPath))
+                {
+                    logoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dl_logo.png");
+                }
+
                 if (File.Exists(logoPath))
                 {
                     picLogo.Image = Image.FromFile(logoPath);
@@ -87,7 +110,7 @@ namespace yt_dl
             cmbFilenameTemplate = new ComboBox
             {
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Location = new Point(125, 219),
+                Location = new Point(125, 323),
                 Name = "cmbFilenameTemplate",
                 Size = new Size(372, 23)
             };
@@ -104,7 +127,7 @@ namespace yt_dl
             var lblTemplate = new Label
             {
                 AutoSize = true,
-                Location = new Point(12, 222),
+                Location = new Point(12, 326),
                 Name = "lblTemplate",
                 Text = "Filename Template:"
             };
@@ -112,7 +135,7 @@ namespace yt_dl
             chkDownloadPlaylist = new CheckBox
             {
                 AutoSize = true,
-                Location = new Point(414, 124),
+                Location = new Point(414, 228),
                 Name = "chkDownloadPlaylist",
                 Size = new Size(158, 19),
                 Text = "Download full playlist",
@@ -121,7 +144,7 @@ namespace yt_dl
 
             btnImportCookies = new Button
             {
-                Location = new Point(330, 250),
+                Location = new Point(330, 354),
                 Name = "btnImportCookies",
                 Size = new Size(105, 23),
                 Text = "Import cookies",
@@ -131,7 +154,7 @@ namespace yt_dl
 
             btnOpenOutputFolder = new Button
             {
-                Location = new Point(441, 250),
+                Location = new Point(441, 354),
                 Name = "btnOpenOutputFolder",
                 Size = new Size(131, 23),
                 Text = "Open Output Folder",
@@ -139,10 +162,32 @@ namespace yt_dl
             };
             btnOpenOutputFolder.Click += btnOpenOutputFolder_Click;
 
+            btnCheckForUpdates = new Button
+            {
+                Location = new Point(436, 380),
+                Name = "btnCheckForUpdates",
+                Size = new Size(136, 23),
+                Text = "Check for Updates",
+                UseVisualStyleBackColor = true
+            };
+            btnCheckForUpdates.Click += btnCheckForUpdates_Click;
+
+            chkCheckForUpdatesOnStartup = new CheckBox
+            {
+                AutoSize = true,
+                Checked = true,
+                Location = new Point(12, 380),
+                Name = "chkCheckForUpdatesOnStartup",
+                Size = new Size(185, 19),
+                Text = "Check for updates on startup",
+                UseVisualStyleBackColor = true
+            };
+            chkCheckForUpdatesOnStartup.CheckedChanged += chkCheckForUpdatesOnStartup_CheckedChanged;
+
             lblYtDlpStatus = new Label
             {
                 AutoSize = true,
-                Location = new Point(184, 280),
+                Location = new Point(184, 408),
                 Name = "lblYtDlpStatus",
                 Text = "yt-dlp: Checking..."
             };
@@ -150,7 +195,7 @@ namespace yt_dl
             lblFfmpegStatus = new Label
             {
                 AutoSize = true,
-                Location = new Point(184, 305),
+                Location = new Point(184, 433),
                 Name = "lblFfmpegStatus",
                 Text = "ffmpeg: Checking..."
             };
@@ -158,7 +203,7 @@ namespace yt_dl
             lblMetadata = new Label
             {
                 AutoSize = false,
-                Location = new Point(184, 375),
+                Location = new Point(184, 503),
                 Name = "lblMetadata",
                 Size = new Size(388, 50),
                 Text = "Paste a YouTube URL to load title, channel, duration, and resolution info."
@@ -167,7 +212,7 @@ namespace yt_dl
             btnCancel = new Button
             {
                 Enabled = false,
-                Location = new Point(495, 461),
+                Location = new Point(495, 589),
                 Name = "btnCancel",
                 Size = new Size(77, 23),
                 Text = "Cancel",
@@ -181,11 +226,14 @@ namespace yt_dl
             openAppFolderToolStripMenuItem = new ToolStripMenuItem("Open App Folder", null, openAppFolderToolStripMenuItem_Click);
             portableModeToolStripMenuItem = new ToolStripMenuItem("Portable Mode", null, portableModeToolStripMenuItem_Click) { CheckOnClick = true };
             darkThemeToolStripMenuItem = new ToolStripMenuItem("Dark Theme", null, darkThemeToolStripMenuItem_Click) { CheckOnClick = true };
+            checkForUpdatesToolStripMenuItem = new ToolStripMenuItem("Check for App Updates", null, checkForUpdatesToolStripMenuItem_Click);
             toolsToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[]
             {
                 importCookiesToolStripMenuItem,
                 locateFfmpegToolStripMenuItem,
                 openAppFolderToolStripMenuItem,
+                new ToolStripSeparator(),
+                checkForUpdatesToolStripMenuItem,
                 new ToolStripSeparator(),
                 portableModeToolStripMenuItem,
                 darkThemeToolStripMenuItem
@@ -196,21 +244,23 @@ namespace yt_dl
             Controls.Add(chkDownloadPlaylist);
             Controls.Add(btnImportCookies);
             Controls.Add(btnOpenOutputFolder);
+            Controls.Add(btnCheckForUpdates);
+            Controls.Add(chkCheckForUpdatesOnStartup);
             Controls.Add(lblYtDlpStatus);
             Controls.Add(lblFfmpegStatus);
             Controls.Add(lblMetadata);
             Controls.Add(btnCancel);
 
-            chkBypassRestrictions.Location = new Point(12, 250);
-            linkLabelHelp.Location = new Point(290, 251);
-            picThumbnail.Location = new Point(12, 280);
-            lblNodeStatus.Location = new Point(184, 330);
-            lblCookieStatus.Location = new Point(184, 352);
-            lblStatus.Location = new Point(12, 431);
-            progressBar.Location = new Point(12, 449);
+            chkBypassRestrictions.Location = new Point(12, 354);
+            linkLabelHelp.Location = new Point(290, 355);
+            picThumbnail.Location = new Point(12, 408);
+            lblNodeStatus.Location = new Point(184, 458);
+            lblCookieStatus.Location = new Point(184, 480);
+            lblStatus.Location = new Point(12, 559);
+            progressBar.Location = new Point(12, 577);
             progressBar.Size = new Size(477, 23);
-            btnDownload.Location = new Point(495, 431);
-            ClientSize = new Size(584, 496);
+            btnDownload.Location = new Point(495, 559);
+            ClientSize = new Size(584, 624);
         }
 
         private void CheckSystemStatus()
@@ -632,6 +682,22 @@ The app will look for 'cookies.txt' in its folder automatically.";
             SaveSettings();
         }
 
+        private async void checkForUpdatesToolStripMenuItem_Click(object? sender, EventArgs e)
+        {
+            await CheckForApplicationUpdates(showUpToDateMessage: true);
+        }
+
+        private async void btnCheckForUpdates_Click(object? sender, EventArgs e)
+        {
+            await CheckForApplicationUpdates(showUpToDateMessage: true);
+        }
+
+        private void chkCheckForUpdatesOnStartup_CheckedChanged(object? sender, EventArgs e)
+        {
+            _checkForUpdatesOnStartup = chkCheckForUpdatesOnStartup.Checked;
+            SaveSettings();
+        }
+
         private void LoadSettings()
         {
             string portablePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
@@ -655,6 +721,7 @@ The app will look for 'cookies.txt' in its folder automatically.";
                         cmbFilenameTemplate.SelectedIndex = Math.Clamp(settings.TemplateIndex, 0, cmbFilenameTemplate.Items.Count - 1);
                         chkBypassRestrictions.Checked = settings.BypassRestrictions;
                         chkDownloadPlaylist.Checked = settings.DownloadPlaylist;
+                        _checkForUpdatesOnStartup = settings.CheckForUpdatesOnStartup;
                     }
                 }
             }
@@ -662,6 +729,7 @@ The app will look for 'cookies.txt' in its folder automatically.";
 
             portableModeToolStripMenuItem.Checked = _portableMode;
             darkThemeToolStripMenuItem.Checked = _darkTheme;
+            chkCheckForUpdatesOnStartup.Checked = _checkForUpdatesOnStartup;
         }
 
         private void SaveSettings()
@@ -682,12 +750,130 @@ The app will look for 'cookies.txt' in its folder automatically.";
                     QualityIndex = cmbQuality.SelectedIndex,
                     TemplateIndex = cmbFilenameTemplate.SelectedIndex,
                     BypassRestrictions = chkBypassRestrictions.Checked,
-                    DownloadPlaylist = chkDownloadPlaylist.Checked
+                    DownloadPlaylist = chkDownloadPlaylist.Checked,
+                    CheckForUpdatesOnStartup = _checkForUpdatesOnStartup
                 };
 
                 File.WriteAllText(_settingsPath, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
             }
             catch { }
+        }
+
+        private async Task CheckForApplicationUpdates(bool showUpToDateMessage)
+        {
+            if (_isDownloading)
+            {
+                if (showUpToDateMessage)
+                {
+                    MessageBox.Show("Please wait for the current download to finish before checking for updates.", "Check for Updates", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                return;
+            }
+
+            checkForUpdatesToolStripMenuItem.Enabled = false;
+            btnCheckForUpdates.Enabled = false;
+            string previousStatus = lblStatus.Text;
+            lblStatus.Text = "Checking for app updates...";
+
+            try
+            {
+                using var client = new HttpClient();
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("YouTubeDownloader/1.0");
+                client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+                client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
+
+                using HttpResponseMessage response = await client.GetAsync(GitHubLatestReleaseUrl);
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new InvalidOperationException(CreateGitHubUpdateErrorMessage(response.StatusCode));
+                }
+
+                using Stream stream = await response.Content.ReadAsStreamAsync();
+                using JsonDocument document = await JsonDocument.ParseAsync(stream);
+                JsonElement root = document.RootElement;
+
+                string latestTag = GetJsonString(root, "tag_name", "");
+                string latestName = GetJsonString(root, "name", latestTag);
+                string releaseUrl = GetJsonString(root, "html_url", "https://github.com/Nipstacles/YouTubeDownloader/releases/latest");
+
+                if (string.IsNullOrWhiteSpace(latestTag))
+                {
+                    throw new InvalidOperationException("The latest release did not include a version tag.");
+                }
+
+                Version currentVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
+                Version? latestVersion = TryParseVersion(latestTag);
+
+                if (latestVersion != null && latestVersion > currentVersion)
+                {
+                    lblStatus.Text = $"App update available: {latestTag}";
+                    DialogResult result = MessageBox.Show(
+                        $"A newer version of YouTube Downloader is available.\n\nCurrent version: {currentVersion}\nLatest version: {latestName}\n\nOpen the GitHub release page now?",
+                        "Update Available",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Information);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        Process.Start(new ProcessStartInfo
+                        {
+                            FileName = releaseUrl,
+                            UseShellExecute = true
+                        });
+                    }
+                }
+                else
+                {
+                    lblStatus.Text = "YouTube Downloader is up to date.";
+                    if (showUpToDateMessage)
+                    {
+                        MessageBox.Show("YouTube Downloader is up to date.", "Check for Updates", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    else
+                    {
+                        lblStatus.Text = previousStatus;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                lblStatus.Text = previousStatus;
+                if (showUpToDateMessage)
+                {
+                    MessageBox.Show($"Could not check for app updates:\n{ex.Message}", "Check for Updates", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+            finally
+            {
+                checkForUpdatesToolStripMenuItem.Enabled = true;
+                btnCheckForUpdates.Enabled = true;
+            }
+        }
+
+        private static string CreateGitHubUpdateErrorMessage(System.Net.HttpStatusCode statusCode)
+        {
+            return statusCode switch
+            {
+                System.Net.HttpStatusCode.NotFound =>
+                    "GitHub returned 404. Confirm the repository is public and that a published GitHub Release exists with a version tag like v1.0.1.",
+                System.Net.HttpStatusCode.Unauthorized =>
+                    "GitHub rejected the update check request.",
+                System.Net.HttpStatusCode.Forbidden =>
+                    "GitHub refused the request. The API rate limit may have been reached.",
+                _ => $"GitHub returned {(int)statusCode} ({statusCode})."
+            };
+        }
+
+        private static Version? TryParseVersion(string version)
+        {
+            string normalized = version.Trim().TrimStart('v', 'V');
+            int suffixIndex = normalized.IndexOfAny(new[] { '-', '+' });
+            if (suffixIndex >= 0)
+            {
+                normalized = normalized[..suffixIndex];
+            }
+
+            return Version.TryParse(normalized, out Version? parsedVersion) ? parsedVersion : null;
         }
 
         private void ApplyTheme()
@@ -1379,6 +1565,7 @@ The app will look for 'cookies.txt' in its folder automatically.";
             public int TemplateIndex { get; set; }
             public bool BypassRestrictions { get; set; }
             public bool DownloadPlaylist { get; set; }
+            public bool CheckForUpdatesOnStartup { get; set; } = true;
         }
     }
 }

@@ -59,7 +59,8 @@ begin
 		'  "QualityIndex": 0,' + #13#10 +
 		'  "TemplateIndex": 0,' + #13#10 +
 		'  "BypassRestrictions": false,' + #13#10 +
-		'  "DownloadPlaylist": false' + #13#10 +
+		'  "DownloadPlaylist": false,' + #13#10 +
+		'  "CheckForUpdatesOnStartup": true' + #13#10 +
 		'}';
 	  SaveStringToFile(SettingsPath, SettingsJson, False);
 	end

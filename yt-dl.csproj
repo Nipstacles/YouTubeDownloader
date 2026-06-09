@@ -18,6 +18,7 @@
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishReadyToRun>true</PublishReadyToRun>
+    <ApplicationIcon>yt-dl_logo.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,10 +28,13 @@
     <None Update="ffmpeg.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="yt-dl_logo.ico">
+    <None Update="yt-dl_logo.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="yt-dl_logo.png">
+    <None Update="yt-dl_logofull.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="yt-dl_logo.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
