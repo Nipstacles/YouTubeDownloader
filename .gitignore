@@ -361,3 +361,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+QuickBuild.bat
+installer/
+BuildRelease.ps1
+
+*.iss

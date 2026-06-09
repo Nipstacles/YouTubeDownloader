@@ -905,6 +905,8 @@ The app will look for 'cookies.txt' in its folder automatically.";
             ApplyThemeToControl(this, backColor, foreColor, inputBackColor, inputForeColor);
             menuStrip.BackColor = backColor;
             menuStrip.ForeColor = foreColor;
+            picLogo.BackColor = Color.FromArgb(32, 32, 32);
+            picLogo.BorderStyle = BorderStyle.FixedSingle;
         }
 
         private static void ApplyThemeToControl(Control control, Color backColor, Color foreColor, Color inputBackColor, Color inputForeColor)
