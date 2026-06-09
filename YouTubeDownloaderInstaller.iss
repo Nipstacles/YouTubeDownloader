@@ -1,5 +1,5 @@
 #define MyAppName "YouTube Downloader"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "Nipstacles"
 #define MyAppExeName "YouTubeDownloader.exe"
 #define SourceDir "publish\win-x64"

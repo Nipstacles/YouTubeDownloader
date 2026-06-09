@@ -22,6 +22,7 @@ namespace yt_dl
         private Button btnCancel = null!;
         private Button btnOpenOutputFolder = null!;
         private Button btnCheckForUpdates = null!;
+        private Label lblAppVersion = null!;
         private Button btnImportCookies = null!;
         private ToolStripMenuItem importCookiesToolStripMenuItem = null!;
         private ToolStripMenuItem locateFfmpegToolStripMenuItem = null!;
@@ -42,6 +43,7 @@ namespace yt_dl
             InitializeComponent();
             InitializeQualityOptions();
             InitializeEnhancedUi();
+            Text = $"YouTube Downloader v{GetCurrentApplicationVersionDisplay()}";
             LoadSettings();
             ApplyTheme();
         }
@@ -242,6 +244,7 @@ namespace yt_dl
             Controls.Add(lblTemplate);
             Controls.Add(cmbFilenameTemplate);
             Controls.Add(chkDownloadPlaylist);
+            Controls.Add(lblAppVersion);
             Controls.Add(btnImportCookies);
             Controls.Add(btnOpenOutputFolder);
             Controls.Add(btnCheckForUpdates);
@@ -297,6 +300,7 @@ namespace yt_dl
                 $"ffmpeg.exe: {(File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe")) ? "✓ Found" : "✗ Not Found")}\n" +
                 $"cookies.txt: {(File.Exists(_cookiesPath) ? "✓ Found" : "✗ Not Found")}\n" +
                 $"yt-dlp.exe: {(File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe")) ? "✓ Found" : "✗ Not Found")}\n\n" +
+                $"App Version: {GetCurrentApplicationVersionDisplay()}\n" +
                 $"App Folder:\n{AppDomain.CurrentDomain.BaseDirectory}\n\n" +
                 $"Settings Mode: {(_portableMode ? "Portable" : "User AppData")}",
                 "System Status",
@@ -801,7 +805,7 @@ The app will look for 'cookies.txt' in its folder automatically.";
                     throw new InvalidOperationException("The latest release did not include a version tag.");
                 }
 
-                Version currentVersion = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
+                Version currentVersion = GetCurrentApplicationVersion();
                 Version? latestVersion = TryParseVersion(latestTag);
 
                 if (latestVersion != null && latestVersion > currentVersion)
@@ -848,6 +852,21 @@ The app will look for 'cookies.txt' in its folder automatically.";
                 checkForUpdatesToolStripMenuItem.Enabled = true;
                 btnCheckForUpdates.Enabled = true;
             }
+        }
+
+        private static Version GetCurrentApplicationVersion()
+        {
+            return Assembly.GetExecutingAssembly().GetName().Version ?? new Version(1, 0, 0);
+        }
+
+        private static string GetCurrentApplicationVersionDisplay()
+        {
+            Version currentVersion = GetCurrentApplicationVersion();
+            return currentVersion.Revision > 0
+                ? currentVersion.ToString()
+                : currentVersion.Build > 0
+                    ? currentVersion.ToString(3)
+                    : currentVersion.ToString(2);
         }
 
         private static string CreateGitHubUpdateErrorMessage(System.Net.HttpStatusCode statusCode)
