@@ -1,5 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -8,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>YouTubeDownloader</AssemblyName>
-    <Version>1.0.2</Version>
+    <Version>1.0.3</Version>
     <Authors>Nipstacles</Authors>
     <Company>Bandorf</Company>
     <Product>YouTube Video Downloader</Product>
@@ -20,7 +19,6 @@
     <PublishReadyToRun>true</PublishReadyToRun>
     <ApplicationIcon>yt-dl_logo.ico</ApplicationIcon>
   </PropertyGroup>
-
   <ItemGroup>
     <None Update="yt-dlp.exe">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -38,5 +36,4 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
-
 </Project>
