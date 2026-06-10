@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json;
@@ -18,6 +19,7 @@ namespace yt_dl
         private Label lblYtDlpStatus = null!;
         private Label lblFfmpegStatus = null!;
         private Label lblMetadata = null!;
+        private Label lblYouTubePlanStatus = null!;
         private CheckBox chkDownloadPlaylist = null!;
         private Button btnCancel = null!;
         private Button btnOpenOutputFolder = null!;
@@ -35,6 +37,8 @@ namespace yt_dl
         private bool _darkTheme;
         private bool _checkForUpdatesOnStartup = true;
         private string _settingsPath = "";
+        private string? _lastRestrictedNotificationUrl;
+        private bool _isRestrictedUrlDetected;
         private static readonly Regex DownloadProgressRegex = new(@"\[download\]\s+(?<percent>\d+(?:\.\d+)?)%(?:\s+of\s+(?<size>\S+))?(?:\s+at\s+(?<speed>\S+))?(?:\s+ETA\s+(?<eta>\S+))?", RegexOptions.Compiled);
         private const string GitHubLatestReleaseUrl = "https://api.github.com/repos/Nipstacles/YouTubeDownloader/releases/latest";
 
@@ -104,7 +108,7 @@ namespace yt_dl
             string downloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
             txtOutput.Text = downloadsPath;
 
-            _cookiesPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cookies.txt");
+            _cookiesPath = GetWritableFilePath("cookies.txt");
         }
 
         private void InitializeEnhancedUi()
@@ -202,10 +206,18 @@ namespace yt_dl
                 Text = "ffmpeg: Checking..."
             };
 
+            lblYouTubePlanStatus = new Label
+            {
+                AutoSize = true,
+                Location = new Point(184, 503),
+                Name = "lblYouTubePlanStatus",
+                Text = "YouTube plan: Cookies not imported"
+            };
+
             lblMetadata = new Label
             {
                 AutoSize = false,
-                Location = new Point(184, 503),
+                Location = new Point(184, 528),
                 Name = "lblMetadata",
                 Size = new Size(388, 50),
                 Text = "Paste a YouTube URL to load title, channel, duration, and resolution info."
@@ -214,7 +226,7 @@ namespace yt_dl
             btnCancel = new Button
             {
                 Enabled = false,
-                Location = new Point(495, 589),
+                Location = new Point(495, 614),
                 Name = "btnCancel",
                 Size = new Size(77, 23),
                 Text = "Cancel",
@@ -251,6 +263,7 @@ namespace yt_dl
             Controls.Add(chkCheckForUpdatesOnStartup);
             Controls.Add(lblYtDlpStatus);
             Controls.Add(lblFfmpegStatus);
+            Controls.Add(lblYouTubePlanStatus);
             Controls.Add(lblMetadata);
             Controls.Add(btnCancel);
 
@@ -259,11 +272,11 @@ namespace yt_dl
             picThumbnail.Location = new Point(12, 408);
             lblNodeStatus.Location = new Point(184, 458);
             lblCookieStatus.Location = new Point(184, 480);
-            lblStatus.Location = new Point(12, 559);
-            progressBar.Location = new Point(12, 577);
+            lblStatus.Location = new Point(12, 584);
+            progressBar.Location = new Point(12, 602);
             progressBar.Size = new Size(477, 23);
-            btnDownload.Location = new Point(495, 559);
-            ClientSize = new Size(584, 624);
+            btnDownload.Location = new Point(495, 584);
+            ClientSize = new Size(584, 650);
         }
 
         private void CheckSystemStatus()
@@ -274,18 +287,20 @@ namespace yt_dl
                 : "Node.js: ✗ Not Found (Required!)";
             lblNodeStatus.ForeColor = hasNodeJs ? Color.Green : Color.Red;
 
+            _cookiesPath = GetWritableFilePath("cookies.txt");
             bool hasCookies = File.Exists(_cookiesPath);
             lblCookieStatus.Text = hasCookies
                 ? "cookies.txt: ✓ Found"
                 : "cookies.txt: ⚠ Not Found (for age-restricted)";
             lblCookieStatus.ForeColor = hasCookies ? Color.Green : Color.Orange;
+            _ = UpdateYouTubePlanStatusAsync();
 
-            string ytDlpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe");
+            string ytDlpPath = GetToolPath("yt-dlp.exe");
             bool hasYtDlp = File.Exists(ytDlpPath);
             lblYtDlpStatus.Text = hasYtDlp ? $"yt-dlp: ✓ {GetToolVersion(ytDlpPath, "--version")}" : "yt-dlp: ✗ Not Found";
             lblYtDlpStatus.ForeColor = hasYtDlp ? Color.Green : Color.Red;
 
-            string ffmpegPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe");
+            string ffmpegPath = GetToolPath("ffmpeg.exe");
             bool hasFfmpeg = File.Exists(ffmpegPath);
             lblFfmpegStatus.Text = hasFfmpeg ? "ffmpeg: ✓ Found" : "ffmpeg: ✗ Not Found";
             lblFfmpegStatus.ForeColor = hasFfmpeg ? Color.Green : Color.Red;
@@ -297,11 +312,12 @@ namespace yt_dl
             MessageBox.Show(
                 $"System Status:\n\n" +
                 $"Node.js: {(CheckForNodeJs() ? "✓ Installed" : "✗ Not Found")}\n" +
-                $"ffmpeg.exe: {(File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe")) ? "✓ Found" : "✗ Not Found")}\n" +
+                $"ffmpeg.exe: {(File.Exists(GetToolPath("ffmpeg.exe")) ? "✓ Found" : "✗ Not Found")}\n" +
                 $"cookies.txt: {(File.Exists(_cookiesPath) ? "✓ Found" : "✗ Not Found")}\n" +
-                $"yt-dlp.exe: {(File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe")) ? "✓ Found" : "✗ Not Found")}\n\n" +
+                $"yt-dlp.exe: {(File.Exists(GetToolPath("yt-dlp.exe")) ? "✓ Found" : "✗ Not Found")}\n\n" +
                 $"App Version: {GetCurrentApplicationVersionDisplay()}\n" +
                 $"App Folder:\n{AppDomain.CurrentDomain.BaseDirectory}\n\n" +
+                $"User Data Folder:\n{GetUserDataDirectory()}\n\n" +
                 $"Settings Mode: {(_portableMode ? "Portable" : "User AppData")}",
                 "System Status",
                 MessageBoxButtons.OK,
@@ -317,8 +333,11 @@ namespace yt_dl
             {
                 picThumbnail.Image = null;
                 lblMetadata.Text = "Paste a YouTube URL to load title, channel, duration, and resolution info.";
+                SetRestrictedUrlState(false);
                 return;
             }
+
+            SetRestrictedUrlState(false);
 
             _previewCancellation = new CancellationTokenSource();
             var token = _previewCancellation.Token;
@@ -377,10 +396,11 @@ namespace yt_dl
 
         private async Task LoadMetadata(string url, CancellationToken cancellationToken)
         {
-            string ytDlpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe");
+            string ytDlpPath = GetToolPath("yt-dlp.exe");
             if (!File.Exists(ytDlpPath))
             {
                 lblMetadata.Text = "Metadata unavailable: yt-dlp.exe was not found.";
+                SetRestrictedUrlState(false);
                 return;
             }
 
@@ -397,6 +417,7 @@ namespace yt_dl
                 };
                 startInfo.ArgumentList.Add("--dump-json");
                 startInfo.ArgumentList.Add("--skip-download");
+                AddCookiesArgumentIfAvailable(startInfo);
                 if (!chkDownloadPlaylist.Checked)
                 {
                     startInfo.ArgumentList.Add("--no-playlist");
@@ -406,11 +427,22 @@ namespace yt_dl
                 using var process = new Process { StartInfo = startInfo };
                 process.Start();
                 string json = await process.StandardOutput.ReadToEndAsync(cancellationToken);
+                string error = await process.StandardError.ReadToEndAsync(cancellationToken);
                 await process.WaitForExitAsync(cancellationToken);
 
                 if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(json))
                 {
-                    lblMetadata.Text = "Metadata unavailable for this URL.";
+                    if (IsRestrictedVideoError(error))
+                    {
+                        NotifyRestrictedVideo(url, error);
+                        SetRestrictedUrlState(true);
+                        lblMetadata.Text = "This YouTube video/movie cannot be downloaded due to restrictions.";
+                    }
+                    else
+                    {
+                        SetRestrictedUrlState(false);
+                        lblMetadata.Text = "Metadata unavailable for this URL.";
+                    }
                     return;
                 }
 
@@ -420,9 +452,17 @@ namespace yt_dl
                 string uploader = GetJsonString(root, "uploader", "Unknown channel");
                 string duration = FormatDuration(GetJsonDouble(root, "duration"));
                 int height = GetMaxFormatHeight(root);
+                if (IsRestrictedVideoMetadata(root))
+                {
+                    NotifyRestrictedVideo(url, "Metadata indicates this video is unavailable, paid, or DRM protected.");
+                    SetRestrictedUrlState(true);
+                    lblMetadata.Text = $"Title: {title}\nRestricted: This video/movie cannot be downloaded due to YouTube restrictions.";
+                    return;
+                }
 
                 if (!cancellationToken.IsCancellationRequested)
                 {
+                    SetRestrictedUrlState(false);
                     lblMetadata.Text = $"Title: {title}\nChannel: {uploader}    Duration: {duration}    Max: {(height > 0 ? height + "p" : "Unknown")}";
                     if (!_isDownloading)
                     {
@@ -434,6 +474,7 @@ namespace yt_dl
             catch
             {
                 lblMetadata.Text = "Metadata unavailable for this URL.";
+                SetRestrictedUrlState(false);
             }
         }
 
@@ -562,7 +603,7 @@ The app will look for 'cookies.txt' in its folder automatically.";
             }
         }
 
-        private void btnImportCookies_Click(object? sender, EventArgs e)
+        private async void btnImportCookies_Click(object? sender, EventArgs e)
         {
             using var dialog = new OpenFileDialog
             {
@@ -578,11 +619,13 @@ The app will look for 'cookies.txt' in its folder automatically.";
 
             try
             {
-                string destination = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cookies.txt");
+                string destination = GetWritableFilePath("cookies.txt");
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 File.Copy(dialog.FileName, destination, overwrite: true);
                 _cookiesPath = destination;
                 chkBypassRestrictions.Checked = true;
                 CheckSystemStatus();
+                await UpdateYouTubePlanStatusAsync();
                 MessageBox.Show("cookies.txt was imported successfully.", "Import cookies", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
@@ -617,10 +660,11 @@ The app will look for 'cookies.txt' in its folder automatically.";
 
             try
             {
-                string destination = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe");
+                string destination = GetWritableFilePath("ffmpeg.exe");
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 File.Copy(dialog.FileName, destination, overwrite: true);
                 CheckSystemStatus();
-                MessageBox.Show("ffmpeg.exe was copied to the app folder.", "Locate ffmpeg", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show("ffmpeg.exe was copied to the user data folder.", "Locate ffmpeg", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
@@ -706,7 +750,7 @@ The app will look for 'cookies.txt' in its folder automatically.";
         {
             string portablePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
             string appDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "YouTubeDownloader", "settings.json");
-            _settingsPath = File.Exists(portablePath) ? portablePath : appDataPath;
+            _settingsPath = File.Exists(portablePath) && CanWriteToDirectory(AppDomain.CurrentDomain.BaseDirectory) ? portablePath : appDataPath;
 
             try
             {
@@ -741,7 +785,7 @@ The app will look for 'cookies.txt' in its folder automatically.";
             try
             {
                 _settingsPath = _portableMode
-                    ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json")
+                    ? GetWritableFilePath("settings.json")
                     : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "YouTubeDownloader", "settings.json");
 
                 Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
@@ -883,6 +927,202 @@ The app will look for 'cookies.txt' in its folder automatically.";
             };
         }
 
+        private static string GetUserDataDirectory()
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "YouTubeDownloader");
+        }
+
+        private static string GetWritableFilePath(string fileName)
+        {
+            string appPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName);
+            if (File.Exists(appPath) && CanWriteToDirectory(AppDomain.CurrentDomain.BaseDirectory))
+            {
+                return appPath;
+            }
+
+            return Path.Combine(GetUserDataDirectory(), fileName);
+        }
+
+        private static string GetToolPath(string fileName)
+        {
+            string userPath = Path.Combine(GetUserDataDirectory(), fileName);
+            if (File.Exists(userPath))
+            {
+                return userPath;
+            }
+
+            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, fileName);
+        }
+
+        private static bool CanWriteToDirectory(string directoryPath)
+        {
+            try
+            {
+                Directory.CreateDirectory(directoryPath);
+                string testPath = Path.Combine(directoryPath, $".write-test-{Guid.NewGuid():N}.tmp");
+                File.WriteAllText(testPath, "test");
+                File.Delete(testPath);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private void AddCookiesArgumentIfAvailable(ProcessStartInfo startInfo)
+        {
+            if (!string.IsNullOrWhiteSpace(_cookiesPath) && File.Exists(_cookiesPath))
+            {
+                startInfo.ArgumentList.Add("--cookies");
+                startInfo.ArgumentList.Add(_cookiesPath);
+            }
+        }
+
+        private async Task UpdateYouTubePlanStatusAsync()
+        {
+            if (lblYouTubePlanStatus == null)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_cookiesPath) || !File.Exists(_cookiesPath))
+            {
+                lblYouTubePlanStatus.Text = "YouTube plan: Cookies not imported";
+                lblYouTubePlanStatus.ForeColor = Color.Orange;
+                return;
+            }
+
+            lblYouTubePlanStatus.Text = "YouTube plan: Detecting...";
+            lblYouTubePlanStatus.ForeColor = SystemColors.ControlText;
+
+            try
+            {
+                CookieContainer cookieContainer = LoadCookieContainer(_cookiesPath);
+                using var handler = new HttpClientHandler { CookieContainer = cookieContainer, UseCookies = true };
+                using var client = new HttpClient(handler);
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 YouTubeDownloader/1.0");
+                string html = await client.GetStringAsync("https://www.youtube.com/paid_memberships");
+                string lower = html.ToLowerInvariant();
+
+                if (lower.Contains("youtube premium") || lower.Contains("premium benefits") || lower.Contains("manage membership"))
+                {
+                    lblYouTubePlanStatus.Text = "YouTube plan: Premium account detected";
+                    lblYouTubePlanStatus.ForeColor = Color.Green;
+                }
+                else if (lower.Contains("sign in"))
+                {
+                    lblYouTubePlanStatus.Text = "YouTube plan: Could not verify sign-in";
+                    lblYouTubePlanStatus.ForeColor = Color.Orange;
+                }
+                else
+                {
+                    lblYouTubePlanStatus.Text = "YouTube plan: Standard account detected";
+                    lblYouTubePlanStatus.ForeColor = Color.DarkOrange;
+                }
+            }
+            catch
+            {
+                lblYouTubePlanStatus.Text = "YouTube plan: Unable to detect";
+                lblYouTubePlanStatus.ForeColor = Color.Orange;
+            }
+        }
+
+        private static CookieContainer LoadCookieContainer(string cookiesPath)
+        {
+            var container = new CookieContainer();
+
+            foreach (string line in File.ReadLines(cookiesPath))
+            {
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
+                {
+                    continue;
+                }
+
+                string[] parts = line.Split('\t');
+                if (parts.Length < 7)
+                {
+                    continue;
+                }
+
+                string domain = parts[0].TrimStart('.');
+                string path = parts[2];
+                string name = parts[5];
+                string value = parts[6];
+
+                if (string.IsNullOrWhiteSpace(domain) || string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    container.Add(new Cookie(name, value, string.IsNullOrWhiteSpace(path) ? "/" : path, domain));
+                }
+                catch { }
+            }
+
+            return container;
+        }
+
+        private bool IsRestrictedVideoMetadata(JsonElement root)
+        {
+            string availability = GetJsonString(root, "availability", "").ToLowerInvariant();
+            string license = GetJsonString(root, "license", "").ToLowerInvariant();
+            string liveStatus = GetJsonString(root, "live_status", "").ToLowerInvariant();
+
+            return availability.Contains("subscriber") ||
+                availability.Contains("premium") ||
+                availability.Contains("needs_auth") ||
+                availability.Contains("unlisted") && license.Contains("drm") ||
+                license.Contains("drm") ||
+                liveStatus.Contains("is_upcoming") && availability.Contains("premium");
+        }
+
+        private static bool IsRestrictedVideoError(string errorText)
+        {
+            string lower = errorText.ToLowerInvariant();
+            return lower.Contains("drm") ||
+                lower.Contains("protected content") ||
+                lower.Contains("requires payment") ||
+                lower.Contains("purchase") ||
+                lower.Contains("rent this movie") ||
+                lower.Contains("buy this movie") ||
+                lower.Contains("paid content") ||
+                lower.Contains("premium members-only") ||
+                lower.Contains("members-only") ||
+                lower.Contains("this video is unavailable") && lower.Contains("movie");
+        }
+
+        private void NotifyRestrictedVideo(string url, string details)
+        {
+            SetRestrictedUrlState(true);
+
+            if (_lastRestrictedNotificationUrl == url)
+            {
+                return;
+            }
+
+            _lastRestrictedNotificationUrl = url;
+            MessageBox.Show(
+                "This YouTube video/movie cannot be downloaded because it is DRM protected, requires payment, or is otherwise restricted by YouTube.",
+                "Download Restricted",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            _downloadLog.Add($"[RESTRICTED] {details}");
+        }
+
+        private void SetRestrictedUrlState(bool isRestricted)
+        {
+            _isRestrictedUrlDetected = isRestricted;
+
+            if (!_isDownloading)
+            {
+                btnDownload.Enabled = !isRestricted;
+                btnDownload.Text = isRestricted ? "Restricted" : "Download";
+            }
+        }
+
         private static Version? TryParseVersion(string version)
         {
             string normalized = version.Trim().TrimStart('v', 'V');
@@ -982,9 +1222,10 @@ The app will look for 'cookies.txt' in its folder automatically.";
 
             try
             {
-                string ytDlpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe");
-                string tempPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe.download");
-                string backupPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe.bak");
+                string ytDlpPath = GetWritableFilePath("yt-dlp.exe");
+                Directory.CreateDirectory(Path.GetDirectoryName(ytDlpPath)!);
+                string tempPath = Path.Combine(Path.GetDirectoryName(ytDlpPath)!, "yt-dlp.exe.download");
+                string backupPath = Path.Combine(Path.GetDirectoryName(ytDlpPath)!, "yt-dlp.exe.bak");
 
                 using var client = new HttpClient();
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("YouTubeDownloader/1.0");
@@ -1020,9 +1261,9 @@ The app will look for 'cookies.txt' in its folder automatically.";
             }
             catch (Exception ex)
             {
-                string ytDlpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe");
-                string tempPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe.download");
-                string backupPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe.bak");
+                string ytDlpPath = GetWritableFilePath("yt-dlp.exe");
+                string tempPath = Path.Combine(Path.GetDirectoryName(ytDlpPath)!, "yt-dlp.exe.download");
+                string backupPath = Path.Combine(Path.GetDirectoryName(ytDlpPath)!, "yt-dlp.exe.bak");
 
                 try
                 {
@@ -1098,7 +1339,7 @@ The app will look for 'cookies.txt' in its folder automatically.";
                 return;
             }
 
-            string ytDlpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe");
+            string ytDlpPath = GetToolPath("yt-dlp.exe");
             if (!File.Exists(ytDlpPath))
             {
                 MessageBox.Show("yt-dlp.exe not found in the application directory.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -1203,6 +1444,16 @@ The app will look for 'cookies.txt' in its folder automatically.";
                 return;
             }
 
+            if (_isRestrictedUrlDetected)
+            {
+                MessageBox.Show(
+                    "This YouTube video/movie cannot be downloaded because it is DRM protected, requires payment, or is otherwise restricted by YouTube.",
+                    "Download Restricted",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             if (string.IsNullOrWhiteSpace(txtOutput.Text) || !Directory.Exists(txtOutput.Text))
             {
                 MessageBox.Show("Please select a valid output folder.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -1300,7 +1551,7 @@ The app will look for 'cookies.txt' in its folder automatically.";
 
         private async Task DownloadVideo(string url)
         {
-            string ytDlpPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "yt-dlp.exe");
+            string ytDlpPath = GetToolPath("yt-dlp.exe");
 
             if (!File.Exists(ytDlpPath))
             {
@@ -1329,7 +1580,7 @@ The app will look for 'cookies.txt' in its folder automatically.";
             }
 
             // Check for ffmpeg
-            string ffmpegPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ffmpeg.exe");
+            string ffmpegPath = GetToolPath("ffmpeg.exe");
             if (!File.Exists(ffmpegPath))
             {
                 var result = MessageBox.Show(
@@ -1432,6 +1683,11 @@ The app will look for 'cookies.txt' in its folder automatically.";
             if (process.ExitCode != 0)
             {
                 string errorText = error.ToString();
+                if (IsRestrictedVideoError(errorText))
+                {
+                    NotifyRestrictedVideo(url, errorText);
+                }
+
                 throw new Exception(CreateFriendlyErrorMessage(errorText, process.ExitCode));
             }
         }
@@ -1456,6 +1712,10 @@ The app will look for 'cookies.txt' in its folder automatically.";
             else if (lower.Contains("cookies") || lower.Contains("dpapi") || lower.Contains("decrypt"))
             {
                 message += "There was a cookie/authentication problem. Import a fresh cookies.txt file from your browser and try again.";
+            }
+            else if (IsRestrictedVideoError(errorText))
+            {
+                message += "This YouTube video/movie cannot be downloaded because it is DRM protected, requires payment, or is otherwise restricted by YouTube.";
             }
             else if (lower.Contains("n challenge") || lower.Contains("nsig") || lower.Contains("javascript runtime"))
             {
