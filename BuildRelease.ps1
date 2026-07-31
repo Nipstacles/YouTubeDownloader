@@ -48,6 +48,7 @@ Copy-Item "$publishPath\*" "Release-Package\YouTubeDownloader\" -Recurse -Force
 # Copy documentation
 Write-Host "Copying documentation..." -ForegroundColor Yellow
 Copy-Item "README.md" "Release-Package\YouTubeDownloader\" -Force
+Copy-Item "CHANGELOG.md" "Release-Package\YouTubeDownloader\" -Force
 Copy-Item "INSTALLATION.md" "Release-Package\YouTubeDownloader\" -Force
 Copy-Item "COOKIE_INSTRUCTIONS.md" "Release-Package\YouTubeDownloader\" -Force
 Copy-Item "EMBEDDED_BUILD_GUIDE.md" "Release-Package\YouTubeDownloader\" -Force
@@ -112,7 +113,7 @@ To update the application:
 # Create version info
 Write-Host "Creating version info..." -ForegroundColor Yellow
 @"
-YouTube Downloader v1.0.0
+YouTube Downloader v1.0.4
 Build Date: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 .NET Version: 10.0
 Platform: Windows x64
@@ -123,6 +124,7 @@ Files included:
 - System.*.dll (Runtime libraries)
 - yt-dl_logo.png (Application logo)
 - README.md (Full documentation)
+- CHANGELOG.md (Release notes)
 - INSTALLATION.md (Installation guide)
 - COOKIE_INSTRUCTIONS.md (Cookie setup guide)
 - EMBEDDED_BUILD_GUIDE.md (Technical details)
@@ -139,14 +141,12 @@ Optional (user-provided):
 - cookies.txt: Export from browser for age-restricted videos
 
 Release Notes:
-- Initial release with embedded yt-dlp and ffmpeg
-- Self-contained .NET 10 runtime
-- Automatic tool extraction to AppData
-- Quality selection: Best, 1440p, 1080p, 720p, 480p, 360p, Audio Only
-- Thumbnail preview
-- System status checks
-- Age-restricted video support
-- Custom filename option
+- Download queue with sequential processing
+- Persistent download history with success/failure tracking
+- Metadata preview reliability improvements
+- Audio metadata embedding with editable title, artist, album, genre, year, and track fields
+- Optional thumbnail cover art embedding for audio downloads
+- Status-check memory pressure improvements
 "@ | Out-File "Release-Package\YouTubeDownloader\VERSION.txt" -Encoding UTF8
 
 # Create a simple batch installer
@@ -234,7 +234,7 @@ See QUICKSTART.txt for detailed instructions.
 
 # Compress to ZIP
 Write-Host "Creating ZIP archive..." -ForegroundColor Yellow
-$zipPath = "Release-Package\YouTubeDownloader-v1.0.0-Portable.zip"
+$zipPath = "Release-Package\YouTubeDownloader-v1.0.4-Portable.zip"
 Compress-Archive -Path "Release-Package\YouTubeDownloader" -DestinationPath $zipPath -Force
 
 Write-Host ""
@@ -246,7 +246,7 @@ Write-Host "Package contents:" -ForegroundColor Cyan
 Write-Host "- Release-Package\YouTubeDownloader\ (Portable version)" -ForegroundColor White
 Write-Host "- Release-Package\INSTALL.bat (Installer script)" -ForegroundColor White
 Write-Host "- Release-Package\PORTABLE_README.txt (Portable instructions)" -ForegroundColor White
-Write-Host "- Release-Package\YouTubeDownloader-v1.0.0-Portable.zip (ZIP archive)" -ForegroundColor White
+Write-Host "- Release-Package\YouTubeDownloader-v1.0.4-Portable.zip (ZIP archive)" -ForegroundColor White
 Write-Host ""
 Write-Host "Distribution options:" -ForegroundColor Cyan
 Write-Host "1. Share the ZIP file for portable use" -ForegroundColor White

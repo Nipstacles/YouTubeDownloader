@@ -12,6 +12,8 @@ namespace yt_dl
         private string? _cookiesPath;
         private bool _isDownloading = false;
         private List<string> _downloadLog = new List<string>();
+        private readonly List<string> _downloadQueue = new();
+        private readonly List<DownloadHistoryItem> _downloadHistory = new();
         private Process? _currentDownloadProcess;
         private bool _downloadCancelled;
         private CancellationTokenSource? _previewCancellation;
@@ -25,6 +27,20 @@ namespace yt_dl
         private Button btnOpenOutputFolder = null!;
         private Button btnCheckForUpdates = null!;
         private Label lblAppVersion = null!;
+        private CheckBox chkEmbedAudioMetadata = null!;
+        private CheckBox chkEmbedThumbnail = null!;
+        private CheckBox chkAutoFillAudioMetadata = null!;
+        private TextBox txtAudioTitle = null!;
+        private TextBox txtAudioArtist = null!;
+        private TextBox txtAudioAlbum = null!;
+        private TextBox txtAudioGenre = null!;
+        private TextBox txtAudioYear = null!;
+        private TextBox txtAudioTrack = null!;
+        private ListBox lstDownloadQueue = null!;
+        private Button btnAddToQueue = null!;
+        private Button btnRemoveQueueItem = null!;
+        private Button btnClearQueue = null!;
+        private Button btnShowHistory = null!;
         private Button btnImportCookies = null!;
         private ToolStripMenuItem importCookiesToolStripMenuItem = null!;
         private ToolStripMenuItem locateFfmpegToolStripMenuItem = null!;
@@ -37,10 +53,19 @@ namespace yt_dl
         private bool _darkTheme;
         private bool _checkForUpdatesOnStartup = true;
         private string _settingsPath = "";
+        private DateTimeOffset? _cookiesImportedAt;
+        private readonly System.Windows.Forms.Timer _cookieFreshnessTimer = new();
+        private CancellationTokenSource? _youtubePlanStatusCancellation;
+        private Task? _youtubePlanStatusTask;
         private string? _lastRestrictedNotificationUrl;
         private bool _isRestrictedUrlDetected;
         private static readonly Regex DownloadProgressRegex = new(@"\[download\]\s+(?<percent>\d+(?:\.\d+)?)%(?:\s+of\s+(?<size>\S+))?(?:\s+at\s+(?<speed>\S+))?(?:\s+ETA\s+(?<eta>\S+))?", RegexOptions.Compiled);
         private const string GitHubLatestReleaseUrl = "https://api.github.com/repos/Nipstacles/YouTubeDownloader/releases/latest";
+        private const int CookieRefreshCheckMinutes = 15;
+        private const int CookieWarningHours = 12;
+        private const int CookieStaleHours = 24;
+        private const int YouTubePlanStatusTimeoutSeconds = 10;
+        private const int MaxDownloadHistoryItems = 100;
 
         public MainForm()
         {
@@ -49,7 +74,21 @@ namespace yt_dl
             InitializeEnhancedUi();
             Text = $"YouTube Downloader v{GetCurrentApplicationVersionDisplay()}";
             LoadSettings();
+            LoadDownloadHistory();
             ApplyTheme();
+            StartCookieFreshnessTimer();
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            _youtubePlanStatusCancellation?.Cancel();
+            _youtubePlanStatusCancellation?.Dispose();
+            _previewCancellation?.Cancel();
+            _previewCancellation?.Dispose();
+            _cookieFreshnessTimer.Stop();
+            _cookieFreshnessTimer.Dispose();
+
+            base.OnFormClosed(e);
         }
 
         private void MainForm_Load(object sender, EventArgs e)
@@ -227,10 +266,191 @@ namespace yt_dl
                 Text = "Paste a YouTube URL to load title, channel, duration, and resolution info."
             };
 
+            var lblQueue = new Label
+            {
+                AutoSize = true,
+                Location = new Point(12, 584),
+                Name = "lblQueue",
+                Text = "Download Queue:"
+            };
+
+            lstDownloadQueue = new ListBox
+            {
+                HorizontalScrollbar = true,
+                Location = new Point(12, 604),
+                Name = "lstDownloadQueue",
+                Size = new Size(560, 79)
+            };
+
+            btnAddToQueue = new Button
+            {
+                Location = new Point(12, 689),
+                Name = "btnAddToQueue",
+                Size = new Size(95, 23),
+                Text = "Add to Queue",
+                UseVisualStyleBackColor = true
+            };
+            btnAddToQueue.Click += btnAddToQueue_Click;
+
+            btnRemoveQueueItem = new Button
+            {
+                Location = new Point(113, 689),
+                Name = "btnRemoveQueueItem",
+                Size = new Size(115, 23),
+                Text = "Remove Selected",
+                UseVisualStyleBackColor = true
+            };
+            btnRemoveQueueItem.Click += btnRemoveQueueItem_Click;
+
+            btnClearQueue = new Button
+            {
+                Location = new Point(234, 689),
+                Name = "btnClearQueue",
+                Size = new Size(82, 23),
+                Text = "Clear Queue",
+                UseVisualStyleBackColor = true
+            };
+            btnClearQueue.Click += btnClearQueue_Click;
+
+            btnShowHistory = new Button
+            {
+                Location = new Point(322, 689),
+                Name = "btnShowHistory",
+                Size = new Size(102, 23),
+                Text = "View History",
+                UseVisualStyleBackColor = true
+            };
+            btnShowHistory.Click += btnShowHistory_Click;
+
+            chkEmbedAudioMetadata = new CheckBox
+            {
+                AutoSize = true,
+                Checked = true,
+                Location = new Point(12, 717),
+                Name = "chkEmbedAudioMetadata",
+                Size = new Size(150, 19),
+                Text = "Embed audio metadata",
+                UseVisualStyleBackColor = true
+            };
+            chkEmbedAudioMetadata.CheckedChanged += AudioMetadataOption_CheckedChanged;
+
+            chkEmbedThumbnail = new CheckBox
+            {
+                AutoSize = true,
+                Location = new Point(172, 717),
+                Name = "chkEmbedThumbnail",
+                Size = new Size(175, 19),
+                Text = "Embed thumbnail cover art",
+                UseVisualStyleBackColor = true
+            };
+            chkEmbedThumbnail.CheckedChanged += AudioMetadataOption_CheckedChanged;
+
+            chkAutoFillAudioMetadata = new CheckBox
+            {
+                AutoSize = true,
+                Checked = true,
+                Location = new Point(372, 717),
+                Name = "chkAutoFillAudioMetadata",
+                Size = new Size(160, 19),
+                Text = "Auto-fill editable tags",
+                UseVisualStyleBackColor = true
+            };
+            chkAutoFillAudioMetadata.CheckedChanged += AudioMetadataOption_CheckedChanged;
+
+            var lblAudioTitle = new Label
+            {
+                AutoSize = true,
+                Location = new Point(12, 746),
+                Name = "lblAudioTitle",
+                Text = "Title:"
+            };
+
+            txtAudioTitle = new TextBox
+            {
+                Location = new Point(58, 743),
+                Name = "txtAudioTitle",
+                Size = new Size(220, 23)
+            };
+
+            var lblAudioArtist = new Label
+            {
+                AutoSize = true,
+                Location = new Point(292, 746),
+                Name = "lblAudioArtist",
+                Text = "Artist:"
+            };
+
+            txtAudioArtist = new TextBox
+            {
+                Location = new Point(340, 743),
+                Name = "txtAudioArtist",
+                Size = new Size(232, 23)
+            };
+
+            var lblAudioAlbum = new Label
+            {
+                AutoSize = true,
+                Location = new Point(12, 775),
+                Name = "lblAudioAlbum",
+                Text = "Album:"
+            };
+
+            txtAudioAlbum = new TextBox
+            {
+                Location = new Point(58, 772),
+                Name = "txtAudioAlbum",
+                Size = new Size(220, 23)
+            };
+
+            var lblAudioGenre = new Label
+            {
+                AutoSize = true,
+                Location = new Point(292, 775),
+                Name = "lblAudioGenre",
+                Text = "Genre:"
+            };
+
+            txtAudioGenre = new TextBox
+            {
+                Location = new Point(340, 772),
+                Name = "txtAudioGenre",
+                Size = new Size(232, 23)
+            };
+
+            var lblAudioYear = new Label
+            {
+                AutoSize = true,
+                Location = new Point(12, 804),
+                Name = "lblAudioYear",
+                Text = "Year:"
+            };
+
+            txtAudioYear = new TextBox
+            {
+                Location = new Point(58, 801),
+                Name = "txtAudioYear",
+                Size = new Size(80, 23)
+            };
+
+            var lblAudioTrack = new Label
+            {
+                AutoSize = true,
+                Location = new Point(158, 804),
+                Name = "lblAudioTrack",
+                Text = "Track:"
+            };
+
+            txtAudioTrack = new TextBox
+            {
+                Location = new Point(205, 801),
+                Name = "txtAudioTrack",
+                Size = new Size(73, 23)
+            };
+
             btnCancel = new Button
             {
                 Enabled = false,
-                Location = new Point(495, 614),
+                Location = new Point(495, 862),
                 Name = "btnCancel",
                 Size = new Size(77, 23),
                 Text = "Cancel",
@@ -269,6 +489,27 @@ namespace yt_dl
             Controls.Add(lblFfmpegStatus);
             Controls.Add(lblYouTubePlanStatus);
             Controls.Add(lblMetadata);
+            Controls.Add(lblQueue);
+            Controls.Add(lstDownloadQueue);
+            Controls.Add(btnAddToQueue);
+            Controls.Add(btnRemoveQueueItem);
+            Controls.Add(btnClearQueue);
+            Controls.Add(btnShowHistory);
+            Controls.Add(chkEmbedAudioMetadata);
+            Controls.Add(chkEmbedThumbnail);
+            Controls.Add(chkAutoFillAudioMetadata);
+            Controls.Add(lblAudioTitle);
+            Controls.Add(txtAudioTitle);
+            Controls.Add(lblAudioArtist);
+            Controls.Add(txtAudioArtist);
+            Controls.Add(lblAudioAlbum);
+            Controls.Add(txtAudioAlbum);
+            Controls.Add(lblAudioGenre);
+            Controls.Add(txtAudioGenre);
+            Controls.Add(lblAudioYear);
+            Controls.Add(txtAudioYear);
+            Controls.Add(lblAudioTrack);
+            Controls.Add(txtAudioTrack);
             Controls.Add(btnCancel);
 
             chkBypassRestrictions.Location = new Point(12, 354);
@@ -276,11 +517,11 @@ namespace yt_dl
             picThumbnail.Location = new Point(12, 408);
             lblNodeStatus.Location = new Point(184, 458);
             lblCookieStatus.Location = new Point(184, 480);
-            lblStatus.Location = new Point(12, 584);
-            progressBar.Location = new Point(12, 602);
+            lblStatus.Location = new Point(12, 832);
+            progressBar.Location = new Point(12, 850);
             progressBar.Size = new Size(477, 23);
-            btnDownload.Location = new Point(495, 584);
-            ClientSize = new Size(584, 650);
+            btnDownload.Location = new Point(495, 832);
+            ClientSize = new Size(584, 898);
         }
 
         private void CheckSystemStatus()
@@ -293,11 +534,8 @@ namespace yt_dl
 
             _cookiesPath = GetWritableFilePath("cookies.txt");
             bool hasCookies = File.Exists(_cookiesPath);
-            lblCookieStatus.Text = hasCookies
-                ? "cookies.txt: ✓ Found"
-                : "cookies.txt: ⚠ Not Found (for age-restricted)";
-            lblCookieStatus.ForeColor = hasCookies ? Color.Green : Color.Orange;
-            _ = UpdateYouTubePlanStatusAsync();
+            UpdateCookieStatusLabel();
+            StartYouTubePlanStatusUpdate();
 
             string ytDlpPath = GetToolPath("yt-dlp.exe");
             bool hasYtDlp = File.Exists(ytDlpPath);
@@ -310,6 +548,116 @@ namespace yt_dl
             lblFfmpegStatus.ForeColor = hasFfmpeg ? Color.Green : Color.Red;
         }
 
+        private void StartCookieFreshnessTimer()
+        {
+            _cookieFreshnessTimer.Interval = CookieRefreshCheckMinutes * 60 * 1000;
+            _cookieFreshnessTimer.Tick += (_, _) => UpdateCookieStatusLabel();
+            _cookieFreshnessTimer.Start();
+            UpdateCookieStatusLabel();
+        }
+
+        private void StartYouTubePlanStatusUpdate()
+        {
+            if (_youtubePlanStatusTask is { IsCompleted: false })
+            {
+                return;
+            }
+
+            _youtubePlanStatusCancellation?.Dispose();
+            _youtubePlanStatusCancellation = new CancellationTokenSource(TimeSpan.FromSeconds(YouTubePlanStatusTimeoutSeconds));
+            _youtubePlanStatusTask = UpdateYouTubePlanStatusAsync(_youtubePlanStatusCancellation.Token);
+        }
+
+        private void UpdateCookieStatusLabel()
+        {
+            if (lblCookieStatus == null)
+            {
+                return;
+            }
+
+            _cookiesPath = GetWritableFilePath("cookies.txt");
+            bool hasCookies = File.Exists(_cookiesPath);
+            lblCookieStatus.Text = $"cookies.txt: {GetCookieStatusMessage()}";
+
+            if (!hasCookies)
+            {
+                lblCookieStatus.ForeColor = Color.Orange;
+            }
+            else if (IsCookieImportStale())
+            {
+                lblCookieStatus.ForeColor = Color.Red;
+            }
+            else if (IsCookieImportWarningAge())
+            {
+                lblCookieStatus.ForeColor = Color.DarkOrange;
+            }
+            else
+            {
+                lblCookieStatus.ForeColor = Color.Green;
+            }
+        }
+
+        private string GetCookieStatusMessage()
+        {
+            _cookiesPath = GetWritableFilePath("cookies.txt");
+            if (!File.Exists(_cookiesPath))
+            {
+                return "⚠ Not Found (needed for age-restricted videos)";
+            }
+
+            if (_cookiesImportedAt == null)
+            {
+                return "✓ Found (import time unknown - re-import recommended)";
+            }
+
+            string ageText = FormatCookieImportAge(DateTimeOffset.Now - _cookiesImportedAt.Value);
+
+            if (IsCookieImportStale())
+            {
+                return $"⚠ Stale - imported {ageText}; re-import recommended";
+            }
+
+            if (IsCookieImportWarningAge())
+            {
+                return $"⚠ Imported {ageText}; may need refresh";
+            }
+
+            return $"✓ Imported {ageText}";
+        }
+
+        private bool IsCookieImportWarningAge()
+        {
+            return _cookiesImportedAt == null || DateTimeOffset.Now - _cookiesImportedAt.Value >= TimeSpan.FromHours(CookieWarningHours);
+        }
+
+        private bool IsCookieImportStale()
+        {
+            return _cookiesImportedAt == null || DateTimeOffset.Now - _cookiesImportedAt.Value >= TimeSpan.FromHours(CookieStaleHours);
+        }
+
+        private static string FormatCookieImportAge(TimeSpan age)
+        {
+            if (age.TotalMinutes < 1)
+            {
+                return "just now";
+            }
+
+            if (age.TotalHours < 1)
+            {
+                int minutes = Math.Max(1, (int)Math.Round(age.TotalMinutes));
+                return minutes == 1 ? "1 minute ago" : $"{minutes} minutes ago";
+            }
+
+            if (age.TotalDays < 1)
+            {
+                int hours = Math.Max(1, (int)Math.Round(age.TotalHours));
+                return hours == 1 ? "1 hour ago" : $"{hours} hours ago";
+            }
+
+            int days = Math.Max(1, (int)Math.Round(age.TotalDays));
+            return days == 1 ? "1 day ago" : $"{days} days ago";
+        }
+
         private void btnCheckStatus_Click(object sender, EventArgs e)
         {
             CheckSystemStatus();
@@ -317,7 +665,7 @@ namespace yt_dl
                 $"System Status:\n\n" +
                 $"Node.js: {(CheckForNodeJs() ? "✓ Installed" : "✗ Not Found")}\n" +
                 $"ffmpeg.exe: {(File.Exists(GetToolPath("ffmpeg.exe")) ? "✓ Found" : "✗ Not Found")}\n" +
-                $"cookies.txt: {(File.Exists(_cookiesPath) ? "✓ Found" : "✗ Not Found")}\n" +
+                $"cookies.txt: {GetCookieStatusMessage()}\n" +
                 $"yt-dlp.exe: {(File.Exists(GetToolPath("yt-dlp.exe")) ? "✓ Found" : "✗ Not Found")}\n\n" +
                 $"App Version: {GetCurrentApplicationVersionDisplay()}\n" +
                 $"App Folder:\n{AppDomain.CurrentDomain.BaseDirectory}\n\n" +
@@ -332,8 +680,8 @@ namespace yt_dl
         {
             _previewCancellation?.Cancel();
 
-            if (string.IsNullOrWhiteSpace(txtUrl.Text) ||
-                (!txtUrl.Text.Contains("youtube.com") && !txtUrl.Text.Contains("youtu.be")))
+            string? previewUrl = GetUrlsFromInput().FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(previewUrl))
             {
                 picThumbnail.Image = null;
                 lblMetadata.Text = "Paste a YouTube URL to load title, channel, duration, and resolution info.";
@@ -349,8 +697,8 @@ namespace yt_dl
             try
             {
                 await Task.Delay(500, token);
-                await LoadThumbnail(txtUrl.Text);
-                await LoadMetadata(txtUrl.Text, token);
+                await LoadThumbnail(previewUrl);
+                await LoadMetadata(previewUrl, token);
             }
             catch (OperationCanceledException) { }
         }
@@ -419,7 +767,8 @@ namespace yt_dl
                     RedirectStandardError = true,
                     CreateNoWindow = true
                 };
-                startInfo.ArgumentList.Add("--dump-json");
+                startInfo.ArgumentList.Add("--dump-single-json");
+                startInfo.ArgumentList.Add("--no-warnings");
                 startInfo.ArgumentList.Add("--skip-download");
                 AddCookiesArgumentIfAvailable(startInfo);
                 if (!chkDownloadPlaylist.Checked)
@@ -430,9 +779,11 @@ namespace yt_dl
 
                 using var process = new Process { StartInfo = startInfo };
                 process.Start();
-                string json = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-                string error = await process.StandardError.ReadToEndAsync(cancellationToken);
+                Task<string> outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+                Task<string> errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
                 await process.WaitForExitAsync(cancellationToken);
+                string json = await outputTask;
+                string error = await errorTask;
 
                 if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(json))
                 {
@@ -445,7 +796,7 @@ namespace yt_dl
                     else
                     {
                         SetRestrictedUrlState(false);
-                        lblMetadata.Text = "Metadata unavailable for this URL.";
+                        lblMetadata.Text = CreateMetadataUnavailableMessage(error);
                     }
                     return;
                 }
@@ -456,6 +807,7 @@ namespace yt_dl
                 string uploader = GetJsonString(root, "uploader", "Unknown channel");
                 string duration = FormatDuration(GetJsonDouble(root, "duration"));
                 int height = GetMaxFormatHeight(root);
+                AutoFillAudioMetadataFields(root, title, uploader);
                 if (IsRestrictedVideoMetadata(root))
                 {
                     NotifyRestrictedVideo(url, "Metadata indicates this video is unavailable, paid, or DRM protected.");
@@ -475,11 +827,58 @@ namespace yt_dl
                 }
             }
             catch (OperationCanceledException) { }
-            catch
+            catch (Exception ex)
             {
-                lblMetadata.Text = "Metadata unavailable for this URL.";
+                lblMetadata.Text = CreateMetadataUnavailableMessage(ex.Message);
                 SetRestrictedUrlState(false);
             }
+        }
+
+        private void AutoFillAudioMetadataFields(JsonElement root, string title, string uploader)
+        {
+            if (!chkAutoFillAudioMetadata.Checked || _isDownloading)
+            {
+                return;
+            }
+
+            txtAudioTitle.Text = title == "Unknown title" ? "" : title;
+            txtAudioArtist.Text = uploader == "Unknown channel" ? "" : uploader;
+            txtAudioAlbum.Text = "YouTube";
+            txtAudioYear.Text = GetUploadYear(root);
+            txtAudioTrack.Text = "";
+        }
+
+        private static string GetUploadYear(JsonElement root)
+        {
+            string uploadDate = GetJsonString(root, "upload_date", "");
+            if (uploadDate.Length >= 4)
+            {
+                return uploadDate[..4];
+            }
+
+            double timestamp = GetJsonDouble(root, "timestamp");
+            if (timestamp > 0)
+            {
+                return DateTimeOffset.FromUnixTimeSeconds((long)timestamp).Year.ToString();
+            }
+
+            return "";
+        }
+
+        private static string CreateMetadataUnavailableMessage(string details)
+        {
+            if (string.IsNullOrWhiteSpace(details))
+            {
+                return "Metadata unavailable for this URL.";
+            }
+
+            string singleLineDetails = string.Join(" ", details.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+            if (singleLineDetails.Length > 140)
+            {
+                singleLineDetails = singleLineDetails[..140] + "...";
+            }
+
+            return $"Metadata unavailable: {singleLineDetails}";
         }
 
         private void btnBrowse_Click(object sender, EventArgs e)
@@ -627,9 +1026,10 @@ The app will look for 'cookies.txt' in its folder automatically.";
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 File.Copy(dialog.FileName, destination, overwrite: true);
                 _cookiesPath = destination;
+                _cookiesImportedAt = DateTimeOffset.Now;
                 chkBypassRestrictions.Checked = true;
+                SaveSettings();
                 CheckSystemStatus();
-                await UpdateYouTubePlanStatusAsync();
                 MessageBox.Show("cookies.txt was imported successfully.", "Import cookies", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
@@ -703,6 +1103,81 @@ The app will look for 'cookies.txt' in its folder automatically.";
             CancelCurrentDownload();
         }
 
+        private void btnAddToQueue_Click(object? sender, EventArgs e)
+        {
+            List<string> urls = GetUrlsFromInput().ToList();
+            if (urls.Count == 0)
+            {
+                MessageBox.Show("Please enter one or more YouTube URLs first.", "Queue", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            int added = 0;
+            foreach (string url in urls)
+            {
+                if (_downloadQueue.Contains(url, StringComparer.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                _downloadQueue.Add(url);
+                added++;
+            }
+
+            UpdateDownloadQueueList();
+            lblStatus.Text = added == 1 ? "Added 1 item to the queue." : $"Added {added} items to the queue.";
+        }
+
+        private void btnRemoveQueueItem_Click(object? sender, EventArgs e)
+        {
+            if (lstDownloadQueue.SelectedIndices.Count == 0)
+            {
+                return;
+            }
+
+            foreach (int index in lstDownloadQueue.SelectedIndices.Cast<int>().OrderDescending())
+            {
+                _downloadQueue.RemoveAt(index);
+            }
+
+            UpdateDownloadQueueList();
+            lblStatus.Text = "Removed selected queue item.";
+        }
+
+        private void btnClearQueue_Click(object? sender, EventArgs e)
+        {
+            _downloadQueue.Clear();
+            UpdateDownloadQueueList();
+            lblStatus.Text = "Download queue cleared.";
+        }
+
+        private void btnShowHistory_Click(object? sender, EventArgs e)
+        {
+            ShowDownloadHistory();
+        }
+
+        private IEnumerable<string> GetUrlsFromInput()
+        {
+            return txtUrl.Text
+                .Split(new[] { "\r\n", "\n", "\r", "\t", " " }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(IsYouTubeUrl);
+        }
+
+        private static bool IsYouTubeUrl(string value)
+        {
+            return value.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+                value.Contains("youtu.be", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void UpdateDownloadQueueList()
+        {
+            lstDownloadQueue.Items.Clear();
+            for (int i = 0; i < _downloadQueue.Count; i++)
+            {
+                lstDownloadQueue.Items.Add($"{i + 1}. {_downloadQueue[i]}");
+            }
+        }
+
         private void CancelCurrentDownload()
         {
             if (_currentDownloadProcess == null || _currentDownloadProcess.HasExited)
@@ -750,6 +1225,11 @@ The app will look for 'cookies.txt' in its folder automatically.";
             SaveSettings();
         }
 
+        private void AudioMetadataOption_CheckedChanged(object? sender, EventArgs e)
+        {
+            SaveSettings();
+        }
+
         private void LoadSettings()
         {
             string portablePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
@@ -773,7 +1253,11 @@ The app will look for 'cookies.txt' in its folder automatically.";
                         cmbFilenameTemplate.SelectedIndex = Math.Clamp(settings.TemplateIndex, 0, cmbFilenameTemplate.Items.Count - 1);
                         chkBypassRestrictions.Checked = settings.BypassRestrictions;
                         chkDownloadPlaylist.Checked = settings.DownloadPlaylist;
+                        chkEmbedAudioMetadata.Checked = settings.EmbedAudioMetadata;
+                        chkEmbedThumbnail.Checked = settings.EmbedThumbnail;
+                        chkAutoFillAudioMetadata.Checked = settings.AutoFillAudioMetadata;
                         _checkForUpdatesOnStartup = settings.CheckForUpdatesOnStartup;
+                        _cookiesImportedAt = settings.CookiesImportedAt;
                     }
                 }
             }
@@ -803,12 +1287,133 @@ The app will look for 'cookies.txt' in its folder automatically.";
                     TemplateIndex = cmbFilenameTemplate.SelectedIndex,
                     BypassRestrictions = chkBypassRestrictions.Checked,
                     DownloadPlaylist = chkDownloadPlaylist.Checked,
-                    CheckForUpdatesOnStartup = _checkForUpdatesOnStartup
+                    EmbedAudioMetadata = chkEmbedAudioMetadata.Checked,
+                    EmbedThumbnail = chkEmbedThumbnail.Checked,
+                    AutoFillAudioMetadata = chkAutoFillAudioMetadata.Checked,
+                    CheckForUpdatesOnStartup = _checkForUpdatesOnStartup,
+                    CookiesImportedAt = _cookiesImportedAt
                 };
 
                 File.WriteAllText(_settingsPath, JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true }));
             }
             catch { }
+        }
+
+        private void LoadDownloadHistory()
+        {
+            try
+            {
+                string historyPath = GetDownloadHistoryPath();
+                if (!File.Exists(historyPath))
+                {
+                    return;
+                }
+
+                List<DownloadHistoryItem>? history = JsonSerializer.Deserialize<List<DownloadHistoryItem>>(File.ReadAllText(historyPath));
+                if (history == null)
+                {
+                    return;
+                }
+
+                _downloadHistory.Clear();
+                _downloadHistory.AddRange(history.Take(MaxDownloadHistoryItems));
+            }
+            catch { }
+        }
+
+        private void SaveDownloadHistory()
+        {
+            try
+            {
+                string historyPath = GetDownloadHistoryPath();
+                Directory.CreateDirectory(Path.GetDirectoryName(historyPath)!);
+                File.WriteAllText(historyPath, JsonSerializer.Serialize(_downloadHistory, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch { }
+        }
+
+        private string GetDownloadHistoryPath()
+        {
+            return _portableMode
+                ? GetWritableFilePath("download-history.json")
+                : Path.Combine(GetUserDataDirectory(), "download-history.json");
+        }
+
+        private void AddDownloadHistory(string url, string status, string errorMessage = "")
+        {
+            _downloadHistory.Insert(0, new DownloadHistoryItem
+            {
+                CompletedAt = DateTimeOffset.Now,
+                Url = url,
+                Quality = cmbQuality.SelectedItem?.ToString() ?? "Unknown",
+                OutputFolder = txtOutput.Text,
+                Status = status,
+                ErrorMessage = errorMessage
+            });
+
+            if (_downloadHistory.Count > MaxDownloadHistoryItems)
+            {
+                _downloadHistory.RemoveRange(MaxDownloadHistoryItems, _downloadHistory.Count - MaxDownloadHistoryItems);
+            }
+
+            SaveDownloadHistory();
+        }
+
+        private void ShowDownloadHistory()
+        {
+            Form historyForm = new Form
+            {
+                Text = "Download History",
+                Width = 950,
+                Height = 600,
+                StartPosition = FormStartPosition.CenterParent,
+                FormBorderStyle = FormBorderStyle.Sizable
+            };
+
+            TextBox txtHistory = new TextBox
+            {
+                Multiline = true,
+                ScrollBars = ScrollBars.Both,
+                Dock = DockStyle.Fill,
+                Font = new Font("Consolas", 9),
+                Text = FormatDownloadHistory(),
+                ReadOnly = true,
+                WordWrap = false
+            };
+
+            Button btnClearHistory = new Button
+            {
+                Text = "Clear History",
+                Dock = DockStyle.Bottom,
+                Height = 30
+            };
+
+            btnClearHistory.Click += (s, e) =>
+            {
+                _downloadHistory.Clear();
+                SaveDownloadHistory();
+                txtHistory.Text = FormatDownloadHistory();
+                lblStatus.Text = "Download history cleared.";
+            };
+
+            historyForm.Controls.Add(txtHistory);
+            historyForm.Controls.Add(btnClearHistory);
+            historyForm.ShowDialog();
+        }
+
+        private string FormatDownloadHistory()
+        {
+            if (_downloadHistory.Count == 0)
+            {
+                return "No download history yet.";
+            }
+
+            return string.Join(Environment.NewLine + Environment.NewLine, _downloadHistory.Select(item =>
+                $"[{item.CompletedAt:yyyy-MM-dd HH:mm:ss}] {item.Status}" + Environment.NewLine +
+                $"URL: {item.Url}" + Environment.NewLine +
+                $"Quality: {item.Quality}" + Environment.NewLine +
+                $"Output: {item.OutputFolder}" +
+                (string.IsNullOrWhiteSpace(item.ErrorMessage) ? "" : Environment.NewLine + $"Error: {item.ErrorMessage}")));
         }
 
         private async Task CheckForApplicationUpdates(bool showUpToDateMessage)
@@ -983,7 +1588,7 @@ The app will look for 'cookies.txt' in its folder automatically.";
             }
         }
 
-        private async Task UpdateYouTubePlanStatusAsync()
+        private async Task UpdateYouTubePlanStatusAsync(CancellationToken cancellationToken)
         {
             if (lblYouTubePlanStatus == null)
             {
@@ -1006,15 +1611,21 @@ The app will look for 'cookies.txt' in its folder automatically.";
                 using var handler = new HttpClientHandler { CookieContainer = cookieContainer, UseCookies = true };
                 using var client = new HttpClient(handler);
                 client.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 YouTubeDownloader/1.0");
-                string html = await client.GetStringAsync("https://www.youtube.com/paid_memberships");
-                string lower = html.ToLowerInvariant();
+                string html = await client.GetStringAsync("https://www.youtube.com/paid_memberships", cancellationToken);
 
-                if (lower.Contains("youtube premium") || lower.Contains("premium benefits") || lower.Contains("manage membership"))
+                if (cancellationToken.IsCancellationRequested || IsDisposed)
+                {
+                    return;
+                }
+
+                if (ContainsOrdinalIgnoreCase(html, "youtube premium") ||
+                    ContainsOrdinalIgnoreCase(html, "premium benefits") ||
+                    ContainsOrdinalIgnoreCase(html, "manage membership"))
                 {
                     lblYouTubePlanStatus.Text = "YouTube plan: Premium account detected";
                     lblYouTubePlanStatus.ForeColor = Color.Green;
                 }
-                else if (lower.Contains("sign in"))
+                else if (ContainsOrdinalIgnoreCase(html, "sign in"))
                 {
                     lblYouTubePlanStatus.Text = "YouTube plan: Could not verify sign-in";
                     lblYouTubePlanStatus.ForeColor = Color.Orange;
@@ -1025,11 +1636,19 @@ The app will look for 'cookies.txt' in its folder automatically.";
                     lblYouTubePlanStatus.ForeColor = Color.DarkOrange;
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
             catch
             {
                 lblYouTubePlanStatus.Text = "YouTube plan: Unable to detect";
                 lblYouTubePlanStatus.ForeColor = Color.Orange;
             }
+        }
+
+        private static bool ContainsOrdinalIgnoreCase(string value, string searchValue)
+        {
+            return value.IndexOf(searchValue, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static CookieContainer LoadCookieContainer(string cookiesPath)
@@ -1155,8 +1774,8 @@ The app will look for 'cookies.txt' in its folder automatically.";
 
         private static void ApplyThemeToControl(Control control, Color backColor, Color foreColor, Color inputBackColor, Color inputForeColor)
         {
-            control.BackColor = control is TextBox or ComboBox ? inputBackColor : backColor;
-            control.ForeColor = control is TextBox or ComboBox ? inputForeColor : foreColor;
+            control.BackColor = control is TextBox or ComboBox or ListBox ? inputBackColor : backColor;
+            control.ForeColor = control is TextBox or ComboBox or ListBox ? inputForeColor : foreColor;
 
             foreach (Control child in control.Controls)
             {
@@ -1173,7 +1792,9 @@ The app will look for 'cookies.txt' in its folder automatically.";
 
         private static double GetJsonDouble(JsonElement element, string propertyName)
         {
-            return element.TryGetProperty(propertyName, out JsonElement value) && value.TryGetDouble(out double result)
+            return element.TryGetProperty(propertyName, out JsonElement value) &&
+                value.ValueKind == JsonValueKind.Number &&
+                value.TryGetDouble(out double result)
                 ? result
                 : 0;
         }
@@ -1188,7 +1809,9 @@ The app will look for 'cookies.txt' in its folder automatically.";
 
             foreach (JsonElement format in formats.EnumerateArray())
             {
-                if (format.TryGetProperty("height", out JsonElement heightElement) && heightElement.TryGetInt32(out int height))
+                if (format.TryGetProperty("height", out JsonElement heightElement) &&
+                    heightElement.ValueKind == JsonValueKind.Number &&
+                    heightElement.TryGetInt32(out int height))
                 {
                     maxHeight = Math.Max(maxHeight, height);
                 }
@@ -1442,13 +2065,15 @@ The app will look for 'cookies.txt' in its folder automatically.";
                 return;
             }
 
-            if (string.IsNullOrWhiteSpace(txtUrl.Text))
+            bool processQueue = _downloadQueue.Count > 0;
+            List<string> urls = processQueue ? _downloadQueue.ToList() : GetUrlsFromInput().ToList();
+            if (urls.Count == 0)
             {
-                MessageBox.Show("Please enter a YouTube URL.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Please enter a YouTube URL or add items to the queue.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (_isRestrictedUrlDetected)
+            if (!processQueue && _isRestrictedUrlDetected)
             {
                 MessageBox.Show(
                     "This YouTube video/movie cannot be downloaded because it is DRM protected, requires payment, or is otherwise restricted by YouTube.",
@@ -1464,22 +2089,83 @@ The app will look for 'cookies.txt' in its folder automatically.";
                 return;
             }
 
+            if (chkBypassRestrictions.Checked && File.Exists(_cookiesPath) && IsCookieImportWarningAge())
+            {
+                DialogResult cookieResult = MessageBox.Show(
+                    $"Your cookies.txt file may need to be refreshed.\n\nCurrent status: {GetCookieStatusMessage()}\n\nAge-restricted videos often require recently exported YouTube cookies. If this download fails, re-import cookies.txt from your browser and try again.\n\nContinue with the current cookies.txt file?",
+                    "Refresh cookies.txt recommended",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (cookieResult == DialogResult.No)
+                {
+                    return;
+                }
+            }
+
             _isDownloading = true;
             _downloadCancelled = false;
             btnDownload.Text = "Cancel";
             btnDownload.Enabled = true;
+            btnAddToQueue.Enabled = false;
+            btnRemoveQueueItem.Enabled = false;
+            btnClearQueue.Enabled = false;
             progressBar.Style = ProgressBarStyle.Blocks;
             progressBar.Value = 0;
             _downloadLog.Clear();
             SaveSettings();
 
+            List<string> failedDownloads = new();
+
             try
             {
-                await DownloadVideo(txtUrl.Text);
-                lblStatus.Text = "Download complete!";
+                for (int i = 0; i < urls.Count; i++)
+                {
+                    string url = urls[i];
+                    lblStatus.Text = urls.Count == 1
+                        ? "Starting download..."
+                        : $"Starting queue item {i + 1} of {urls.Count}...";
 
-                var result = MessageBox.Show("Download complete!\n\nWould you like to view the download log?", 
-                    "Success", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
+                    try
+                    {
+                        await DownloadVideo(url);
+                        AddDownloadHistory(url, "Completed");
+
+                        if (processQueue)
+                        {
+                            _downloadQueue.Remove(url);
+                            UpdateDownloadQueueList();
+                        }
+                    }
+                    catch (Exception ex) when (!_downloadCancelled)
+                    {
+                        AddDownloadHistory(url, "Failed", ex.Message);
+                        failedDownloads.Add($"{url}: {ex.Message}");
+                        _downloadLog.Add($"[FAILED] {url}: {ex.Message}");
+
+                        if (urls.Count == 1)
+                        {
+                            throw;
+                        }
+                    }
+                }
+
+                if (_downloadCancelled)
+                {
+                    throw new OperationCanceledException("Download cancelled.");
+                }
+
+                lblStatus.Text = failedDownloads.Count == 0 ? "Download complete!" : "Queue completed with errors.";
+
+                string message = failedDownloads.Count == 0
+                    ? (urls.Count == 1 ? "Download complete!" : $"Queue complete. Downloaded {urls.Count} items.")
+                    : $"Queue complete with {failedDownloads.Count} failed item(s).\n\nView the download log for details?";
+
+                var result = MessageBox.Show(
+                    failedDownloads.Count == 0 ? $"{message}\n\nWould you like to view the download log?" : message,
+                    failedDownloads.Count == 0 ? "Success" : "Queue Completed",
+                    MessageBoxButtons.YesNo,
+                    failedDownloads.Count == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
 
                 if (result == DialogResult.Yes)
                 {
@@ -1508,6 +2194,9 @@ The app will look for 'cookies.txt' in its folder automatically.";
                 progressBar.Value = 0;
                 btnDownload.Enabled = true;
                 btnDownload.Text = "Download";
+                btnAddToQueue.Enabled = true;
+                btnRemoveQueueItem.Enabled = true;
+                btnClearQueue.Enabled = true;
                 _isDownloading = false;
                 _currentDownloadProcess = null;
             }
@@ -1775,6 +2464,35 @@ The app will look for 'cookies.txt' in its folder automatically.";
                     startInfo.ArgumentList.Add("--audio-quality");
                     startInfo.ArgumentList.Add(selectedQuality.AudioQuality);
                 }
+
+                if (chkEmbedAudioMetadata.Checked)
+                {
+                    startInfo.ArgumentList.Add("--embed-metadata");
+                    AddAudioMetadataPostProcessorArgument(startInfo, "title", txtAudioTitle.Text);
+                    AddAudioMetadataPostProcessorArgument(startInfo, "artist", txtAudioArtist.Text);
+                    AddAudioMetadataPostProcessorArgument(startInfo, "album_artist", txtAudioArtist.Text);
+                    AddAudioMetadataPostProcessorArgument(startInfo, "album", txtAudioAlbum.Text);
+                    AddAudioMetadataPostProcessorArgument(startInfo, "genre", txtAudioGenre.Text);
+                    AddAudioMetadataPostProcessorArgument(startInfo, "date", txtAudioYear.Text);
+                    AddAudioMetadataPostProcessorArgument(startInfo, "track", txtAudioTrack.Text);
+
+                    if (selectedQuality.AudioFormat.Equals("mp3", StringComparison.OrdinalIgnoreCase))
+                    {
+                        AddPostProcessorArgument(startInfo, "ExtractAudio+ffmpeg", "-id3v2_version 3");
+                    }
+                }
+
+                if (chkEmbedThumbnail.Checked && !selectedQuality.AudioFormat.Equals("wav", StringComparison.OrdinalIgnoreCase))
+                {
+                    startInfo.ArgumentList.Add("--embed-thumbnail");
+                    startInfo.ArgumentList.Add("--convert-thumbnails");
+                    startInfo.ArgumentList.Add("jpg");
+
+                    if (selectedQuality.AudioFormat.Equals("mp3", StringComparison.OrdinalIgnoreCase))
+                    {
+                        AddPostProcessorArgument(startInfo, "EmbedThumbnail+ffmpeg", "-id3v2_version 3");
+                    }
+                }
             }
             else
             {
@@ -1804,6 +2522,27 @@ The app will look for 'cookies.txt' in its folder automatically.";
             startInfo.ArgumentList.Add("-o");
             startInfo.ArgumentList.Add(outputTemplate);
             startInfo.ArgumentList.Add(url);
+        }
+
+        private static void AddAudioMetadataPostProcessorArgument(ProcessStartInfo startInfo, string tagName, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            AddPostProcessorArgument(startInfo, "Metadata+ffmpeg", $"-metadata {QuoteForPostProcessorArgs($"{tagName}={value.Trim()}")}");
+        }
+
+        private static void AddPostProcessorArgument(ProcessStartInfo startInfo, string postProcessor, string argument)
+        {
+            startInfo.ArgumentList.Add("--postprocessor-args");
+            startInfo.ArgumentList.Add($"{postProcessor}:{argument}");
+        }
+
+        private static string QuoteForPostProcessorArgs(string value)
+        {
+            return $"\"{value.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
         }
 
         private static string BuildCommandLineForLog(string executablePath, System.Collections.ObjectModel.Collection<string> arguments)
@@ -1854,7 +2593,21 @@ The app will look for 'cookies.txt' in its folder automatically.";
             public int TemplateIndex { get; set; }
             public bool BypassRestrictions { get; set; }
             public bool DownloadPlaylist { get; set; }
+            public bool EmbedAudioMetadata { get; set; } = true;
+            public bool EmbedThumbnail { get; set; }
+            public bool AutoFillAudioMetadata { get; set; } = true;
             public bool CheckForUpdatesOnStartup { get; set; } = true;
+            public DateTimeOffset? CookiesImportedAt { get; set; }
+        }
+
+        private sealed class DownloadHistoryItem
+        {
+            public DateTimeOffset CompletedAt { get; set; }
+            public string Url { get; set; } = "";
+            public string Quality { get; set; } = "";
+            public string OutputFolder { get; set; } = "";
+            public string Status { get; set; } = "";
+            public string ErrorMessage { get; set; } = "";
         }
     }
 }
