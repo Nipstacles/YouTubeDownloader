@@ -101,7 +101,11 @@ namespace yt_dl
                 "480p or higher",
                 "360p or higher",
                 "Audio Only (Best Quality)",
-                "Audio Only (MP3 320k)"
+                "Audio Only (M4A Best)",
+                "Audio Only (MP3 320k)",
+                "Audio Only (WAV Lossless)",
+                "Audio Only (FLAC Lossless)",
+                "Audio Only (Opus Best)"
             });
             cmbQuality.SelectedIndex = 0;
 
@@ -1830,7 +1834,11 @@ The app will look for 'cookies.txt' in its folder automatically.";
                 4 => new QualitySelection("bestvideo[height<=720][height>=480]+bestaudio/best[height<=720][height>=480]/bestvideo[height>=480]+bestaudio"),
                 5 => new QualitySelection("bestvideo[height<=480][height>=360]+bestaudio/best[height<=480][height>=360]/bestvideo[height>=360]+bestaudio"),
                 6 => new QualitySelection("bestaudio/best", IsAudioOnly: true, AudioFormat: "best", AudioQuality: "0"),
-                7 => new QualitySelection("bestaudio/best", IsAudioOnly: true, AudioFormat: "mp3", AudioQuality: "320K"),
+                7 => new QualitySelection("bestaudio[ext=m4a]/bestaudio/best", IsAudioOnly: true, AudioFormat: "m4a", AudioQuality: "0"),
+                8 => new QualitySelection("bestaudio/best", IsAudioOnly: true, AudioFormat: "mp3", AudioQuality: "320K"),
+                9 => new QualitySelection("bestaudio/best", IsAudioOnly: true, AudioFormat: "wav", AudioQuality: "0"),
+                10 => new QualitySelection("bestaudio/best", IsAudioOnly: true, AudioFormat: "flac", AudioQuality: "0"),
+                11 => new QualitySelection("bestaudio[ext=webm]/bestaudio/best", IsAudioOnly: true, AudioFormat: "opus", AudioQuality: "0"),
                 _ => new QualitySelection("bestvideo+bestaudio/best")
             };
         }

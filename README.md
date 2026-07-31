@@ -12,7 +12,11 @@ A Windows desktop application for downloading YouTube videos and audio with qual
 - 480p or higher
 - 360p or higher
 - Audio Only (Best Quality)
+- Audio Only (M4A Best)
 - Audio Only (MP3 320k)
+- Audio Only (WAV Lossless)
+- Audio Only (FLAC Lossless)
+- Audio Only (Opus Best)
 
 ✅ **Video Preview and Metadata**
 - Automatic thumbnail preview when pasting URLs
@@ -115,10 +119,16 @@ While downloading, the **Download** button becomes **Cancel**.
 
 ### Download Audio Only
 1. Paste the YouTube URL.
-2. Select either:
+2. Select an audio-only format:
    - **Audio Only (Best Quality)**
+	 - **Audio Only (M4A Best)**
    - **Audio Only (MP3 320k)**
+   - **Audio Only (WAV Lossless)**
+   - **Audio Only (FLAC Lossless)**
+   - **Audio Only (Opus Best)**
 3. Click **Download**.
+
+Audio-only downloads depend on the formats YouTube exposes for that video. Lossless options convert the best available source audio; they do not improve source quality beyond what YouTube provides.
 
 ### Download a Playlist
 1. Paste a playlist URL or a video URL containing playlist parameters.
